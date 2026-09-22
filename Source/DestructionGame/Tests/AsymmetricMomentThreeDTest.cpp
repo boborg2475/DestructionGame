@@ -7,109 +7,81 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * E1b hardening — the asymmetric-moment sign lock (E1a-review finding 2), riding with the pyramid.
+ * E1b: asymmetric-moment sign lock (E1a-review finding 2). The E0-A tripod is X<->Y symmetric
+ * with supports at one height, so a wrong Mz sign or an Mx<->My swap leaves it green. This
+ * fixture has an off-diagonal CoM and supports at different heights under a horizontal push, so
+ * Mz and the height coupling both bind.
  *
- * The E0-A tripod (TripodThreeDTest.cpp) is X<->Y symmetric (CoM at (L/4, L/4), supports at
- * (0,0)/(L,0)/(0,L)) with every support at one height, so its normal reactions are pinned by Fz,
- * Mx, My alone — the Mz row and the shear->moment (height) coupling never bind, and a wrong Mz
- * sign or an Mx<->My swap would leave it green. This second determinate 3D fixture removes both
- * blind spots: an off-diagonal CoM (cx = 10 != cy = 20) and supports at different heights driven
- * by a horizontal push, so a horizontal reaction carries net moment and Mz and the U/V moment
- * coupling both bind. Its reactions and lambda* are exact hand statics.
- *
- * THE FIXTURE — one free block, centroid C = (10, 20, 30), on five frictionless point-patch
- * supports (c = 0, mu = 0), plus a horizontal push. Frictionless is load-bearing: with the k=8
- * pyramid a c = mu = 0 support caps its shear at zero, so each carries only its normal force — a
- * pure "link" — making the system statically determinate (five normal unknowns, five non-trivial
- * equilibrium equations).
+ * One free block, centroid (10, 20, 30), on five frictionless point patches (c = mu = 0, so the
+ * pyramid caps shear at zero and each is a pure link: statically determinate).
  *
  *     THREE VERTICAL rollers (N = +Z), at plan (0,0), (40,0), (0,40)   -> normals nv1, nv2, nv3
  *     TWO HORIZONTAL rollers (N = -X, pushing the block in -X), at
  *         HxA: plan-y = 20, height z = 0                               -> normal Ra
  *         HxB: plan-y =  0, height z = 10  (different height)          -> normal Rb
  *
- * Loads: dead gravity W = M*980 = 9800 uu at C, and a push H = (P, 0, 0), P = 9800 uu, applied at
- * (10, 10, 0). H's moment about C is (0, -30P, +10P): it feeds Fx, My and Mz.
- *
- * HAND STATICS (all six equilibrium equations, verified). The horizontal reactions decouple
- * (vertical forces give nothing to Fx, Fy, Mz):
+ * Loads: W = 9800 uu at C, and push P = 9800 uu in +X at (10, 10, 0); moment about C is
+ * (0, -30P, +10P).
  *
  *     Fx : P - Ra - Rb = 0
  *     Mz : +10P (push) - 20*Rb (HxB at plan-y 0) = 0     -> Rb = P/2 = 4900,  Ra = P/2 = 4900
- *
- * then the vertical normals, whose My equation carries the horizontal reactions' moment through
- * their different heights (30*Ra from HxA at z=0, 20*Rb from HxB at z=10):
- *
  *     Fz : nv1 + nv2 + nv3 = W
  *     Mx : -nv1 - nv2 + nv3 = 0                            -> nv3 = nv1 + nv2 = W/2 = 4900
  *     My : 10*nv1 - 30*nv2 + 10*nv3 - 30P + 30*Ra + 20*Rb = 0   -> nv1 = 3*nv2
  *
  *     => nv1 = 3W/8 = 3675 ,  nv2 = W/8 = 1225 ,  nv3 = W/2 = 4900 ,  Ra = Rb = 4900
  *
- * All five reactions are positive (compression) — a valid dry no-tension force system, asymmetric
- * in x and y, with Rb pinned by the Mz balance:
+ * Bite 1 (Mx<->My swap in AppendThreeDContactCoeffs) moves the vertical normals off these values.
+ * Bite 2 (negated contact Mz) gives Rb = -P/2, which a no-tension roller cannot supply.
  *
- *   BITE 1 (Mx<->My swap in AppendThreeDContactCoeffs): the vertical-normal equations use x- and
- *          y-plan geometry, which differ (V2 at x=40 vs V3 at y=40); swapping Mx and My scrambles
- *          them and moves (nv1, nv2, nv3) off (3675, 1225, 4900).
- *   BITE 2 (negate the contact Mz coefficients): the Mz balance becomes +10P + 20*Rb = 0 -> Rb =
- *          -P/2 < 0, which a no-tension roller cannot supply, reddening the assertion.
+ * Arm (ii): all loads live, crush cap C = 0.01 MPa * 10000 * 98 cm2 = 9800 uu, so the three
+ * 4900 uu reactions crush together at lambda* = 2.
  *
- * lambda* (arm ii): make gravity and the push both live, and cap crushing on every support at
- * C = f_c*Conv*A = 0.01*10000*98 = 9800 uu. Every reaction scales linearly and the most-loaded
- * three (nv3, Ra, Rb = 4900) crush together, so lambda* = C / 4900 = 2 exactly.
- *
- * STATE — red now, the sign-locking guard once E1b lands. This fixture's determinacy depends on
- * the friction pyramid zeroing the frictionless supports' shear and on the 3D push being posed;
- * E1a supplies neither, so today it is red (free shear makes the system indeterminate, the
- * min-violation readout lands on the wrong vertex, lambda* is not 2) — the absence of E1b, not a
- * sign bug. Once E1b lands (pyramid + applied force) it turns green and thereafter guards the
- * moment signs the tripod cannot, via the two bites above. (Red after E1b with the frictionless
- * links determinate would be a genuine sign defect.)
- *
- * Units derived here, not imported. Needs no ticking world. Named namespace for the unity build.
+ * Red until E1b lands (pyramid plus posed applied force); without it free shear makes the system
+ * indeterminate. Red after E1b would be a real sign defect. Units derived here. No ticking world.
+ * Named namespace for the unity build.
  */
 namespace AsymmetricMomentThreeDSupport
 {
 	using namespace RigidBlockOracle;
 
 	constexpr double GravityCmPerSecondSquared = 980.0;
-	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;   /* 1 MPa over 1 cm2 = 10000 uu */
+	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;   // 1 MPa over 1 cm2 = 10000 uu
 
-	constexpr double MassKg = 10.0;          /* W = 9800 uu */
-	constexpr double AreaSqCm = 98.0;        /* per support patch face */
-	constexpr double ComXCm = 10.0;          /* OFF-DIAGONAL: cx != cy */
+	constexpr double MassKg = 10.0;          // W = 9800 uu
+	constexpr double AreaSqCm = 98.0;        // per support patch
+	constexpr double ComXCm = 10.0;          // off-diagonal: cx != cy
 	constexpr double ComYCm = 20.0;
 	constexpr double ComZCm = 30.0;
 
-	constexpr double PushUu = 9800.0;        /* P = W, so the hand reactions come out round */
+	constexpr double PushUu = 9800.0;        // P = W, for round reactions
 
-	/* Support / joint indexing. Five grounded supports (one per patch), one free block. */
+	// Five grounded supports (one per patch), one free block.
 	enum { V1 = 0, V2 = 1, V3 = 2, HxA = 3, HxB = 4, Free = 5 };
 	enum { JV1 = 0, JV2 = 1, JV3 = 2, JHxA = 3, JHxB = 4 };
 
-	constexpr double CrushMPa = 0.01;        /* C = 0.01*10000*98 = 9800 uu; lambda* = C/4900 = 2 */
+	constexpr double CrushMPa = 0.01;        // C = 9800 uu; lambda* = 2
 
 	double WeightUu() { return MassKg * GravityCmPerSecondSquared; }
 	double CrushCapUu() { return CrushMPa * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
 
-	/* The hand reactions (all compression, positive). */
-	double Nv1Uu() { return 3.0 * WeightUu() / 8.0; }   /* 3675 */
-	double Nv2Uu() { return WeightUu() / 8.0; }         /* 1225 */
-	double Nv3Uu() { return WeightUu() / 2.0; }         /* 4900 */
-	double RaUu()  { return PushUu / 2.0; }             /* 4900 */
-	double RbUu()  { return PushUu / 2.0; }             /* 4900 */
+	// Hand reactions, all compression.
+	double Nv1Uu() { return 3.0 * WeightUu() / 8.0; }   // 3675
+	double Nv2Uu() { return WeightUu() / 8.0; }         // 1225
+	double Nv3Uu() { return WeightUu() / 2.0; }         // 4900
+	double RaUu()  { return PushUu / 2.0; }             // 4900
+	double RbUu()  { return PushUu / 2.0; }             // 4900
 
-	/** Most-loaded reaction at lambda = 1 (nv3 = Ra = Rb = 4900); crushing binds here. */
+	/** Most-loaded reaction at lambda = 1, where crushing binds. */
 	double MaxReactionUu() { return Nv3Uu(); }
-	double ExpectedLoadFactor() { return CrushCapUu() / MaxReactionUu(); }   /* 9800/4900 = 2 */
+	double ExpectedLoadFactor() { return CrushCapUu() / MaxReactionUu(); }   // 2
 
 	FConnectionStrength Frictionless(double CompressiveMPa)
 	{
 		FConnectionStrength S;
 		S.CompressiveStrengthMPa = CompressiveMPa;
-		S.TensileStrengthMPa = 0.0;          /* dry no-tension */
-		S.ShearCohesionMPa = 0.0;            /* frictionless: shear capacity is mu*n + c*A = 0 */
+		S.TensileStrengthMPa = 0.0;          // dry, no tension
+		S.ShearCohesionMPa = 0.0;            // frictionless: zero shear capacity
 		S.FrictionCoefficient = 0.0;
 		return S;
 	}
@@ -151,7 +123,7 @@ namespace AsymmetricMomentThreeDSupport
 		J.CentreYCm = Cy;
 		J.CentreZCm = Cz;
 		J.HalfLengthCm = 0.0;
-		J.HalfUCm = 0.0;      /* point patch: four coincident corners -> a single normal contact */
+		J.HalfUCm = 0.0;      // point patch: a single normal contact
 		J.HalfVCm = 0.0;
 		J.AreaSqCm = AreaSqCm;
 		J.Strength = Strength;
@@ -159,19 +131,14 @@ namespace AsymmetricMomentThreeDSupport
 	}
 
 	/**
-	 * The full five-support fixture. Compressive cap governs whether crushing can bind: generous
-	 * (1000 MPa) for the reactions readout, the finite CrushMPa for the load factor.
+	 * The five-support fixture. bLiveLoads false: dead loads, reactions read off the min-violation
+	 * readout (use a generous cap). True: live loads, so crushing gives lambda*.
 	 */
 	FOracleProblem BuildProblem(bool bLiveLoads, double CompressiveMPa)
 	{
 		FOracleProblem P;
 		P.Dim = EOracleDim::Dim3D;
 
-		/*
-		 * bLiveLoads chooses the pose. FALSE: gravity dead and the push dead (both at lambda = 1),
-		 * read the reactions off the min-violation readout. TRUE: gravity and push both LIVE, so
-		 * every reaction scales with lambda and crushing at the most-loaded support gives lambda*.
-		 */
 		P.bGravityIsLive = bLiveLoads;
 		P.bMinViolationReadout = !bLiveLoads;
 
@@ -185,16 +152,16 @@ namespace AsymmetricMomentThreeDSupport
 		P.Blocks[HxB] = Grounded(31.0, 0.0, 10.0);
 		P.Blocks[Free] = FreeBlock(bLiveLoads);
 
-		/* Three vertical rollers (N = +Z) at plan (0,0), (40,0), (0,40), contact plane z = 0. */
+		// Vertical rollers, contact plane z = 0.
 		P.Joints.Add(PointPatch(V1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, Bond));
 		P.Joints.Add(PointPatch(V2, 0.0, 0.0, 1.0, 40.0, 0.0, 0.0, Bond));
 		P.Joints.Add(PointPatch(V3, 0.0, 0.0, 1.0, 0.0, 40.0, 0.0, Bond));
 
-		/* Two horizontal rollers (N = -X) at DIFFERENT heights; plan-x is immaterial to the moments. */
+		// Horizontal rollers at different heights; plan-x does not affect the moments.
 		P.Joints.Add(PointPatch(HxA, -1.0, 0.0, 0.0, 30.0, 20.0, 0.0, Bond));
 		P.Joints.Add(PointPatch(HxB, -1.0, 0.0, 0.0, 30.0, 0.0, 10.0, Bond));
 
-		/* The horizontal push H = (P,0,0) at (10,10,0): feeds Fx, My and Mz. */
+		// Push (P,0,0) at (10,10,0): feeds Fx, My and Mz.
 		FOracleAppliedForce Push;
 		Push.Block = Free;
 		Push.ForceXUu = PushUu;
@@ -218,12 +185,8 @@ namespace AsymmetricMomentThreeDSupport
 }
 
 /*
- * The asymmetric-moment fixture matches hand statics — reactions and load factor.
- *
- * Red now: E1b (the friction pyramid zeroing the frictionless supports' shear, and the 3D
- * applied-force posing) does not exist yet, so the system is indeterminate and neither the
- * reactions nor lambda* match. Green once E1b lands, thereafter a sign-locking regression guard
- * (bite 1 Mx<->My swap; bite 2 negate contact Mz — see the header). Needs no ticking world.
+ * The asymmetric-moment fixture matches hand statics: reactions and load factor. Red until E1b
+ * lands, then a sign-locking guard (see the namespace comment). No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FAsymmetricMomentThreeDMatchesHandStaticsTest,
@@ -235,7 +198,7 @@ bool FAsymmetricMomentThreeDMatchesHandStaticsTest::RunTest(const FString& Param
 	using namespace RigidBlockOracle;
 	using namespace AsymmetricMomentThreeDSupport;
 
-	/* ---------------- ARM (i): the five reactions ---------------- */
+	// Arm (i): the five reactions.
 	{
 		const FOracleProblem P = BuildProblem(/*bLiveLoads*/ false, /*CompressiveMPa*/ 1000.0);
 		const FOracleResult R = SolveRigidBlock(P);
@@ -275,7 +238,7 @@ bool FAsymmetricMomentThreeDMatchesHandStaticsTest::RunTest(const FString& Param
 			Near(NormalOf(R.Readout, JHxB), RbUu(), Tol));
 	}
 
-	/* ---------------- ARM (ii): lambda* = C / max reaction = 9800 / 4900 = 2 ---------------- */
+	// Arm (ii): lambda* = C / max reaction = 9800 / 4900 = 2.
 	{
 		const FOracleProblem P = BuildProblem(/*bLiveLoads*/ true, /*CompressiveMPa*/ CrushMPa);
 		const FOracleResult R = SolveRigidBlock(P);

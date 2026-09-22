@@ -16,70 +16,28 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The planar pose — a 3D-flagged structure whose posed problem is planar is posed in 2D.
+ * Planar pose: a 3D-flagged structure whose posed problem is planar is posed in 2D.
  *
- * `RigidBlockOracle::BuildRigidBlockProblem` poses the cheapest sound problem: 2D whenever
- * both (a) every joint it actually poses has an in-plane normal and (b) every Y that
- * enters an equilibrium row — each ungrounded block's centroid, each posed patch centre —
- * is one common Y; 3D otherwise. `IsThreeDimensional()` is demoted from "which pose" to
- * the stated permission to pose 3D at all, so a 2D-flagged structure carrying an
- * out-of-plane joint is still loudly refused and never quietly promoted. The fourth test
- * below is condition (b)'s own pin.
+ * `BuildRigidBlockProblem` poses 2D when (a) every posed joint has an in-plane normal and
+ * (b) every Y entering an equilibrium row (ungrounded centroids, posed patch centres) is one
+ * common Y; otherwise 3D. `IsThreeDimensional()` is only the permission to pose 3D, so a
+ * 2D-flagged structure with an out-of-plane joint is still refused, never promoted.
  *
- * Why this exists — what the unconditional 3D flag cost. `UDestructionStructureSubsystem::
- * BeginBuild` now flags every player build 3D (the E3 ruling: 3D is stated at the door,
- * never inferred from a joint that happens to have landed — see
- * `FStructure::SetThreeDimensional`, Structure.h ~490), fixing a silent demotion where one
- * rotated brick used to move a whole build's break authority off the LP and onto the
- * router. It also made a straight wall pay a 3D solve it has no use for: measured on a
- * 100-brick / 261-joint session wall with nothing released, a cold `Run structure` went
- * from 2.5 s in the 2D pose to 94 s in the 3D pose, ~37x (CURRENT_STATE, corner entry
- * (xiii)). Timing is not asserted anywhere here — a wall-clock threshold on a shared
- * machine is a flake, and `OracleSweepFull` is where solver cost is verified; the numbers
- * are recorded because they are the whole reason for the slice.
+ * Why: BeginBuild flags every player build 3D (the E3 ruling, Structure.h
+ * SetThreeDimensional), which made a straight 100-brick session wall solve in 94 s instead of
+ * 2.5 s (~37x; CURRENT_STATE corner entry xiii). Timing is not asserted; OracleSweepFull owns
+ * solver cost.
  *
- * Why the planar problem is posed in 2D — and why the two poses are not interchangeable.
- * The implication runs one way only: 3D-feasible implies 2D-feasible (project a 3D force
- * system onto X-Z and sum each joint's out-of-plane pairs — every 3D equilibrium row
- * implies its 2D twin), but the converse fails by a known factor. The 3D friction pyramid
- * and shear ceiling are a k = 8 octagon inscribed in the true Coulomb cone
- * (`ThreeDPyramidInscribeFactor` = cos(pi/8) = 0.92387953..., RigidBlockOracle.cpp),
- * deliberately pulled in so no shear direction is admitted past the cone. Pure in-plane
- * shear lands on a facet rather than a vertex, so the 3D pose caps it at 0.924x the exact
- * Coulomb limit the 2D rows carry — a planar structure shear-critical with a collapse
- * multiplier lambda* in [1.0, 1/0.92387953 = 1.0824) falls posed in 3D and stands posed in
- * 2D. So the 2D pose is not merely the cheap one, it is the accurate one: it carries the
- * exact cone for a problem with no out-of-plane shear to approximate, and it is the pose
- * every pinned oracle-sweep reading in this project is anchored on. Choosing it for a
- * planar problem is a fidelity argument that happens also to be ~37x faster. What the
- * out-of-plane rows add nothing to is the equilibrium side — with every posed normal in
- * X-Z and every posed Y equal, the out-of-plane force row and the two out-of-plane moment
- * rows are linear combinations of the in-plane ones and carry no information. It is the
- * strength side, the inscribed octagon, where the two formulations part company.
+ * 2D is also the more accurate pose. 3D-feasible implies 2D-feasible, not the converse: the 3D
+ * friction pyramid is a k=8 octagon inscribed in the Coulomb cone (cos(pi/8) = 0.924), so a
+ * shear-critical planar structure with lambda* in [1.0, 1.0824) falls posed 3D and stands
+ * posed 2D. Every oracle-sweep pin is anchored on the 2D pose.
  *
- * The discriminator that matters: skipped joints do not count. The rule is over the
- * joints the bridge poses, not `NumConnections()`. The bridge drops a joint that has given
- * and a joint whose two pieces are both grounded before it ever looks at a normal, so an L
- * laid entirely on the earth has out-of-plane head joints and still poses a planar
- * problem. Case three below is exactly that structure, the case an implementation that
- * scanned every connection would get wrong: it would pay the 3D solve for a wall whose LP
- * contains not one out-of-plane row. The four other cases pin the corners of the rule.
+ * Only posed joints count: the bridge skips given joints and grounded-to-grounded joints, so
+ * an earth-level L poses planar (case three). The observable is `FOracleProblem::Dim` itself.
+ * No ticking world, and no force-vs-strength comparison, so no unit conversion.
  *
- * What is asserted, and the observable: `FOracleProblem::Dim`, read straight off the
- * bridge's own output — the mechanism, the posed dimension itself, binary and exact, not a
- * proxy such as a solve time or a pivot count. The world-level pin
- * (`World.Session.StraightBuildRunsInThePlanarPose`) cannot reach the problem struct and
- * goes through `FStructure::GetLastEquilibriumProblemDim()` instead, stamped on the pose
- * by `BreakByEquilibrium`.
- *
- * No ticking world needed: hand-laid layouts, the bridge, and `FStructure::SolveAndBreak`
- * — a world-free structural cascade, not a Chaos tick.
- *
- * Units: nothing here compares a force against a strength, so the 1 N = 100 uu / 1 MPa
- * over 1 cm2 = 10000 uu boundary is not crossed — every reading is a dimension, a support
- * enum, a severed flag, or the same number computed twice and compared with itself.
- *
- * Named namespace, not anonymous — a unity build merges many files into one translation unit.
+ * Named namespace: unity builds merge translation units.
  */
 namespace PlanarPoseTestSupport
 {
@@ -88,10 +46,8 @@ namespace PlanarPoseTestSupport
 	using namespace RigidBlockOracle;
 
 	/*
-	 * The coordinating grid, spelled out rather than imported. A brick is 21.5 x 10.25 x
-	 * 6.5 cm on a 1 cm joint, so the grid is 22.5 x 11.25 x 7.5 and course n centres a
-	 * brick at n * 7.5 + 3.25 (course 0 resting on the earth). A rotated brick is the same
-	 * box with X and Y swapped.
+	 * Coordinating grid, spelled out: a 21.5 x 10.25 x 6.5 cm brick on a 1 cm joint, so course n
+	 * centres at n * 7.5 + 3.25. A rotated brick swaps X and Y.
 	 */
 
 	const FVector HalfBrick(10.75, 5.125, 3.25);
@@ -100,17 +56,12 @@ namespace PlanarPoseTestSupport
 	constexpr double Course0ZCm = 3.25;
 	constexpr double Course1ZCm = 10.75;
 
-	/** Clay brick, 1.9 g/cm3 — the published density every wall in this project is laid at. */
+	/** Clay brick, 1.9 g/cm3. */
 	constexpr double BrickDensityGramsPerCubicCm = 1.9;
 
 	/*
-	 * The bridge's skip rule, transcribed deliberately rather than called: this predicate
-	 * answers "would the bridge pose this joint at all", which is what the rule under test
-	 * quantifies over. Written from the bridge's documented refusals (a given joint is out
-	 * of the structure; a joint between two grounded pieces constrains nothing the earth
-	 * does not already absorb) rather than by calling into the bridge — a fixture that
-	 * asked the code under test which joints it posed could not then claim the fixture
-	 * contains a posed out-of-plane joint.
+	 * Whether the bridge would pose this joint: not given, and not grounded-to-grounded.
+	 * Transcribed rather than called, so the fixture does not ask the code under test.
 	 */
 	bool JointWouldBePosed(const FStructure& Structure, int32 Connection)
 	{
@@ -125,15 +76,7 @@ namespace PlanarPoseTestSupport
 			&& Structure.GetPiece(Joint.PieceB).bIsGrounded);
 	}
 
-	/**
-	 * Whether this joint's normal leaves the X-Z plane, in the house NaN-safe form.
-	 *
-	 * `!(|Y| <= tol)` rather than `|Y| > tol` so a non-finite normal answers true — out of
-	 * plane, the expensive-and-sound side. It cannot actually arrive here (`AddConnection`
-	 * refuses a non-axis-aligned normal and the bridge's own `Normalize()` refuses a
-	 * degenerate one first), which is why no fixture below exercises it; the form is here
-	 * so the test's own bookkeeping cannot be the thing that swallows a NaN.
-	 */
+	/** Whether the normal leaves the X-Z plane. Written `!(|Y| <= tol)` so a NaN answers true (the sound side). */
 	bool NormalIsOutOfPlane(const FConnection& Joint)
 	{
 		return !(FMath::Abs(Joint.InterfaceNormal.Y) <= 1.0e-9);
@@ -161,7 +104,7 @@ namespace PlanarPoseTestSupport
 		}
 	}
 
-	/** Every out-of-plane joint, posed or skipped — the count case THREE needs to be non-vacuous. */
+	/** Every out-of-plane joint, posed or skipped. */
 	int32 CountOutOfPlaneJoints(const FStructure& Structure)
 	{
 		int32 Count = 0;
@@ -188,21 +131,12 @@ namespace PlanarPoseTestSupport
 			JointWouldBePosed(Structure, Connection) ? 1 : 0);
 	}
 
-	/** "2D"/"3D" for a posed problem's dimension, so a failure message reads as physics. */
 	const TCHAR* DimName(EOracleDim Dim)
 	{
 		return Dim == EOracleDim::Dim3D ? TEXT("3D") : TEXT("2D");
 	}
 
-	/* The three fixtures. */
-
-	/**
-	 * A straight running-bond wall — the planar case the slice exists for.
-	 *
-	 * Laid by the existing producer (`DestructionLayout::RunningBond`), two courses of
-	 * three bricks: bed joints normal +/-Z, head joints normal +/-X, not one Y component
-	 * anywhere.
-	 */
+	/** Two courses of three in running bond: beds +/-Z, heads +/-X, no Y normal anywhere. */
 	bool LayStraightWall(FBrickLayout& OutLayout)
 	{
 		FRunningBondSpec Spec;
@@ -215,21 +149,13 @@ namespace PlanarPoseTestSupport
 	}
 
 	/**
-	 * The six-piece L with a posed out-of-plane head joint — the shape
-	 * `World.Session.CornerBuildIsJudgedByTheLP` lays, laid here through `BuildMode::PlacePiece`
-	 * instead of the player's clicks so the fixture needs no world.
+	 * The six-piece L of `World.Session.CornerBuildIsJudgedByTheLP`, laid via PlacePiece.
+	 * A rotated return off the seed's +X end (x = 10.75 + 1 + 5.125 = 16.875), two more rotated
+	 * bricks along Y, then two course-1 bricks whose head joint 5-4 is the one posed
+	 * out-of-plane joint (neither piece is grounded).
 	 *
-	 * The seed at the origin; a rotated return one joint off its +X end (10.75 + 1 + 5.125
-	 * = 16.875) finishing flush with its -Y face (-5.125 + 10.75 = 5.625); two more rotated
-	 * bricks stepping 22.5 cm along Y; then two course-1 bricks, whose head joint 5-4 is
-	 * between two pieces that reach the earth only through their beds. That one joint is
-	 * the whole fixture: an L laid entirely on course 0 presents the bridge with no posed
-	 * out-of-plane joint at all (see `LayEarthLevelCorner`).
-	 *
-	 * The cursors are offset exactly as the session's are — same-course bricks asked for
-	 * 0.125 cm short of the pitch so the same-course pose beats the next-course pose on raw
-	 * distance, course-1 bricks asked for at the running bond, where a zero offset cannot
-	 * be outranked.
+	 * Same-course cursors sit 0.125 cm short of the pitch so the same-course pose wins, as in the
+	 * session.
 	 */
 	bool LayCornerWithAPosedOutOfPlaneJoint(FBrickLayout& OutLayout)
 	{
@@ -269,15 +195,10 @@ namespace PlanarPoseTestSupport
 	}
 
 	/**
-	 * THE SAME CORNER LAID ENTIRELY ON THE EARTH, WITH ONE BRICK ON TOP OF THE STRAIGHT LEG — the
-	 * case that separates "every joint is in-plane" from "every POSED joint is in-plane".
-	 *
-	 * Two stretchers along X, a rotated return off the second one's +X end (22.5 + 10.75 + 1 +
-	 * 5.125 = 39.375), one more rotated brick along Y, and a course-1 stretcher bedded on the two
-	 * X-leg bricks. The Y-leg head joint 3-2 has a +/-Y normal and joins two GROUNDED pieces, so
-	 * the bridge skips it and the posed set — the two beds under piece 4 — is entirely in-plane.
-	 * The beds are what keep the posed set non-empty: "every posed joint is in-plane" over an
-	 * EMPTY set is vacuously true and would discriminate nothing.
+	 * An L laid on the earth plus one course-1 brick on the X leg. Separates "every joint is
+	 * in-plane" from "every posed joint is in-plane": the Y-normal head joint 3-2 joins two
+	 * grounded pieces and is skipped, and the course-1 brick's two beds keep the posed set
+	 * non-empty. Return at x = 22.5 + 10.75 + 1 + 5.125 = 39.375.
 	 */
 	bool LayEarthLevelCorner(FBrickLayout& OutLayout)
 	{
@@ -316,17 +237,12 @@ namespace PlanarPoseTestSupport
 	}
 
 	/*
-	 * The hand-laid fixtures, and why they cannot go through the producers: everything
-	 * above is laid by `RunningBond` or `BuildMode::PlacePiece`, and both snap onto one
-	 * coordinating grid, at one wythe — exactly the geometry the second half of the
-	 * planarity rule is about, so a fixture built through them cannot express the case
-	 * (the snap would pull the Y back onto the plane and the test would measure the
-	 * producer instead of the bridge). So these two go through `AddPiece`/`AddConnection`
-	 * directly, with `MakeInterface` still owning every normal, area and rectangle — the
-	 * one place a joint may be built (Layout.h).
+	 * Hand-laid fixtures for condition (b). The producers snap to one wythe and would pull Y back
+	 * onto the plane, so these use AddPiece/AddConnection directly, with MakeInterface still
+	 * building every joint (Layout.h).
 	 */
 
-	/** A structure laid brick by brick, with the handles kept so a test can name them. */
+	/** A structure laid brick by brick, with handles kept. */
 	struct FHandLaidStructure
 	{
 		FStructure Structure;
@@ -334,18 +250,12 @@ namespace PlanarPoseTestSupport
 		TArray<int32> Joints;
 	};
 
-	/** The 1 cm mortar joint the whole coordinating grid above is built on. */
 	constexpr double JointThicknessCm = 1.0;
 
-	/** C24 softwood, ~0.42 g/cm3 — the published density this project's timber is cut at. */
+	/** C24 softwood, ~0.42 g/cm3. */
 	constexpr double TimberDensityGramsPerCubicCm = 0.42;
 
-	/**
-	 * Lay one box as a piece and return its handle, or INDEX_NONE.
-	 *
-	 * Mass comes from `PieceMassKg`, the project's ONE derivation of mass from geometry, so
-	 * nothing here re-derives a kilogram from a volume.
-	 */
+	/** Lay one box as a piece (mass via PieceMassKg); returns its handle, or INDEX_NONE. */
 	int32 LayBox(
 		FHandLaidStructure& Out,
 		const FPieceBox& Box,
@@ -391,22 +301,10 @@ namespace PlanarPoseTestSupport
 	}
 
 	/**
-	 * The Y-cantilever: one grounded stretcher, one brick bedded on it and shoved along Y.
-	 *
-	 * Both boxes are the standard 21.5 x 10.25 x 6.5 brick. The lower rests on the earth at
-	 * (0, 0, 3.25); the upper sits one course up at (0, TopCentreYCm, 10.75), separated on
-	 * Z alone by the 1 cm joint, so `MakeInterface` writes a bed joint with a +Z normal. At
-	 * TopCentreYCm = 7.5 the two boxes overlap over only 2.75 cm of wythe, so the bed patch
-	 * spans Y 2.375..5.125 and its centre lands at Y = 3.75 — 2.73 kern-widths outside a
-	 * patch whose Y half-extent is 1.375.
-	 *
-	 * Every normal is still in-plane (the bed is +/-Z), the whole point: the normals alone
-	 * say "planar" and the problem is not. `DryStone` (tensile 0.0 MPa, cohesion 0.0) is
-	 * what makes the overhang decide something — a bonded joint could hang it off its
-	 * tensile capacity and the fixture would stand for reasons unrelated to the pose.
-	 *
-	 * At TopCentreYCm = 0 the same call is the control: full 21.5 x 10.25 bed, patch centre
-	 * at Y = 0, the one ungrounded centroid at Y = 0, and a genuinely planar problem.
+	 * Y-cantilever: a grounded brick with a second bedded on it, shifted TopCentreYCm along Y.
+	 * The bed normal is +Z, so the normals say planar while the Ys do not. At 7.5 the patch spans
+	 * Y 2.375..5.125 (centre 3.75). DryStone (no tension or cohesion) so only statics hold it up.
+	 * TopCentreYCm = 0 is the planar control.
 	 */
 	bool LayYCantilever(double TopCentreYCm, FHandLaidStructure& Out)
 	{
@@ -427,25 +325,14 @@ namespace PlanarPoseTestSupport
 	}
 
 	/**
-	 * Two walls and one plank — two grounded bearings 40 cm apart with a timber plank
-	 * spanning them, laid either along Y (the 3D case) or along X (the planar control).
-	 *
-	 * The plank is 21.5 x 50 x 5 cm, bottomed at Z = 7.5 so it clears each bearing's 6.5 cm
-	 * top by the 1 cm joint; each bed patch is separated on Z alone and so carries a +/-Z
-	 * normal in both arrangements — the second half of the rule in isolation: not one
-	 * normal leaves the plane either way, and the only thing that changes is where in Y the
-	 * rows sit.
-	 *
-	 *   Along Y: bearings at Y = 0 and Y = 40, plank centroid at Y = 20, bed patch centres
-	 *   at Y = 0.0625 and Y = 39.9375. Three different Y values enter the equilibrium rows,
-	 *   and projecting them onto one plane would turn a plank bearing at two ends into a
-	 *   plank bearing twice at the same place.
-	 *
-	 *   Along X: bearings at X = 0 and X = 40, everything at Y = 0 — one plane, genuinely planar.
+	 * Two grounded bearings 40 cm apart spanned by a 21.5 x 50 x 5 cm timber plank. Every bed
+	 * normal is +/-Z either way, so this isolates condition (b). Along Y, three Ys enter the rows
+	 * (bearings 0 and 40, plank 20), which one plane cannot represent; along X everything is at
+	 * Y = 0 (the planar control).
 	 */
 	bool LayTwoWallsOnePlank(bool bSpanAlongY, FHandLaidStructure& Out)
 	{
-		/* Bottomed at 7.5 = the bearings' 6.5 cm top plus the 1 cm joint; 5 cm deep. */
+		// Bottom at 7.5: the bearings' 6.5 cm top plus the 1 cm joint.
 		constexpr double PlankHalfDepthCm = 2.5;
 		constexpr double PlankCentreZCm = 7.5 + PlankHalfDepthCm;
 		constexpr double PlankHalfSpanCm = 25.0;
@@ -482,21 +369,9 @@ namespace PlanarPoseTestSupport
 }
 
 /*
- * Case by case: which pose the bridge builds.
- *
- * Cases one and three are the rule itself: a 3D-flagged wall whose posed joints are all
- * in-plane at one Y is posed in 2D, and an out-of-plane joint the bridge skips buys no 3D
- * pose. They drove the slice — `BuildRigidBlockProblem` used to set `OutProblem.Dim =
- * Dim3D` on the flag alone, before it had looked at a single joint, so both read 3D where
- * 2D is required.
- *
- * Cases two, four and five are the regression net around the change: the genuinely
- * out-of-plane corner must go on being posed 3D, a 2D-flagged planar wall must go on being
- * posed 2D, and a 2D-flagged corner must go on being refused rather than quietly promoted
- * to the pose that would carry it. Proven to bite by their twins — cases one and three are
- * the same assertion against the same field, and the mutation that flattens the pose
- * choice back to the flag flips exactly those two.
- *
+ * Which pose the bridge builds, case by case. Cases one and three pin the rule (they failed
+ * when Dim came from the flag alone). Cases two, four and five are the regression net: a real
+ * corner stays 3D, a 2D-flagged wall stays 2D, a 2D-flagged corner stays refused.
  * No ticking world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -510,7 +385,7 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 	using namespace PlanarPoseTestSupport;
 	using namespace RigidBlockOracle;
 
-	/* --- ONE: A STRAIGHT WALL FLAGGED 3D IS POSED IN 2D --------------------------------------- */
+	// One: a straight wall flagged 3D is posed in 2D.
 
 	{
 		FBrickLayout Wall;
@@ -567,7 +442,7 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim2D));
 	}
 
-	/* --- TWO: A GENUINE CORNER FLAGGED 3D IS STILL POSED IN 3D -------------------------------- */
+	// Two: a real corner flagged 3D is still posed in 3D.
 
 	{
 		FBrickLayout Corner;
@@ -625,7 +500,7 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim3D));
 	}
 
-	/* --- THREE: AN OUT-OF-PLANE JOINT THE BRIDGE SKIPS DOES NOT BUY A 3D POSE ----------------- */
+	// Three: an out-of-plane joint the bridge skips does not make the pose 3D.
 
 	{
 		FBrickLayout Corner;
@@ -690,7 +565,7 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim2D));
 	}
 
-	/* --- FOUR: A 2D-FLAGGED PLANAR WALL IS UNCHANGED ------------------------------------------ */
+	// Four: a 2D-flagged planar wall is unchanged.
 
 	{
 		FBrickLayout Wall;
@@ -718,7 +593,7 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim2D));
 	}
 
-	/* --- FIVE: A 2D-FLAGGED CORNER IS STILL REFUSED, NEVER PROMOTED --------------------------- */
+	// Five: a 2D-flagged corner is still refused, never promoted.
 
 	{
 		FBrickLayout Corner;
@@ -761,76 +636,21 @@ bool FPlanarProblemUnderTheThreeDFlagPosesInTwoDTest::RunTest(const FString& Par
 }
 
 /*
- * The self-comparison pin: flagging a planar structure 3D changes no answer.
+ * Tripwire: flagging a planar structure 3D changes no answer. Both copies pose the same 2D LP,
+ * so this is green by construction and goes red only if the poses are re-split (a reverted
+ * pose choice, a predicate that stops skipping earth-to-earth joints, a 3D-only readout path).
+ * It does not show the formulations agree; they do not (3D caps in-plane shear at 0.924x).
  *
- * Read this first — what this test is now for. Since the bridge chooses the pose, a
- * planar fixture is posed in 2D whether or not it is flagged, so both copies below build
- * literally the same LP and every comparison here is a self-comparison. It is green by
- * construction, and that is the point: its job is to go red the day the poses are
- * re-split. Anything that makes a flagged planar structure take the 3D pose again — a
- * reverted pose choice, a predicate that stops skipping earth-to-earth joints, a new
- * 3D-only readout path — separates the two copies and this test fires on the verdict, the
- * severed set or the readout. It is a tripwire, not a demonstration that the two
- * formulations agree — they do not (see below).
+ * Compared: pass count and every piece's support enum; per-joint HasGiven and break pass;
+ * per-joint readout; and the fixture's shape. No displacement (DESIGN §4).
  *
- * The two poses are not interchangeable. The true relation is one-directional:
- * 3D-feasible implies 2D-feasible (project onto X-Z, sum each joint's out-of-plane pairs,
- * every 3D row implies its 2D twin), but not the converse — the 3D friction pyramid and
- * shear ceiling are a k=8 octagon inscribed in the Coulomb cone
- * (`ThreeDPyramidInscribeFactor` = cos(pi/8) = 0.924), so pure in-plane shear is capped at
- * 0.924x the exact cone the 2D rows carry, and a shear-critical planar structure with
- * lambda* in [1.0, 1.0824) falls in 3D and stands in 2D. 2D is the more accurate
- * formulation for a planar problem as well as the cheaper one, and the one every
- * oracle-sweep pin is anchored on. No fixture in this corpus is shear-critical, which is
- * why the corpus could ever have been run both ways and looked like agreement.
+ * Measured disagreements when re-split: the 3D readout lacks the shear-cap and first-crack
+ * rows (CURRENT_STATE item 8), reading 0.006 vs 0.041 on one joint; and with the bottom course
+ * removed the 3D pose severed joints 2, 4, 7, 14-18 that 2D left intact, because a falling
+ * body's LP dual is degenerate.
  *
- * What is compared, in four currencies, because they fail independently:
- *
- *   - the verdict: `SolveAndBreak`'s pass count, and every piece's `GetPieceSupport` — the
- *     exact enum, so Stranded and Falling cannot be confused;
- *   - the severed set: `HasGiven` and `GetBreakPass` per joint, so a cascade that reached
- *     the same end state down a different sequence of passes is still caught;
- *   - the readout: `GetConnectionReadout` per joint — presence, N, M, violation and utilisation;
- *   - and the fixture's own shape, so a producer change cannot quietly empty the corpus.
- *
- * Displacement is nowhere in that list, and could not be: nothing here moves (DESIGN §4).
- *
- * What the two poses actually did disagree about, before the pose was chosen — both
- * readings kept because they are what the tripwire is watching for, and either would come
- * back if the poses were re-split.
- *
- *   The readout: the 3D min-violation readout (`SolveMinViolationReadoutThreeD`) never got
- *   the shear-cap and first-crack rows the 3D gate got — the item-8 residue in
- *   CURRENT_STATE — so it prices a bonded joint against an envelope the gate no longer
- *   allows. Measured on the 100-brick session wall: the same joint read 0.006 through the
- *   3D readout against 0.041 through the 2D one, 6.7x more comfortable. That residue is
- *   still there; posing a planar problem in 2D simply stops a planar structure from ever
- *   reaching it.
- *
- *   The severed set, on the collapse row only (measured 2026-09-16, a finding in its own
- *   right): with the whole bottom course pulled out, the two poses agreed completely on
- *   the verdict (one pass, all ten pieces lose the earth, every support enum identical)
- *   and disagreed on which joints the mechanism opens — the 3D pose severed joints 2, 4,
- *   7, 14, 15, 16, 17 and 18 in pass 1 where the 2D pose left them intact. That is not the
- *   readout residue, it is the collapse mechanism itself, what a free-falling body's LP
- *   looks like: the dual is degenerate, several force systems certify the same
- *   infeasibility, and the two formulations pick different ones. So even where the two
- *   formulations agree on standing-or-falling, they need not agree on the break sequence —
- *   the argument for choosing a pose rather than leaving two to agree. Once a planar
- *   problem is always posed in 2D, both copies here are literally the same problem and
- *   every assertion below holds exactly, by construction rather than luck.
- *
- * What it deliberately does not do: sweep the whole catalogue. Five small fixtures, all
- * below the gate's block cap, each solved twice. The exhaustive version is the LP oracle
- * sweep, and `OracleSweepFull` is mandatory before any commit that touches the bridge or
- * the solver — this test is the fast gate, not the verification.
- *
- * Tolerance: today both copies assemble the identical system and the readout doubles
- * agree bit for bit; the 1e-9 relative-or-absolute comparison is there for the re-split
- * case, where two different-sized systems would reach the same optimum by different
- * simplex paths and the last bits need not agree — four orders tighter than the 6.7x
- * readout gap above and far looser than one ulp. Every other reading is exact.
- *
+ * Five small fixtures, not the catalogue: OracleSweepFull is the verification. The 1e-9
+ * tolerance allows for different simplex paths if re-split; every other reading is exact.
  * No ticking world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -844,13 +664,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace PlanarPoseTestSupport;
 
-	/**
-	 * One fixture of the corpus: how to lay it, and which pieces the player has pulled out.
-	 *
-	 * The removals are named by course rather than by handle, because a handle is a
-	 * producer implementation detail and a course is what the cut means. `INDEX_NONE` cuts
-	 * nothing.
-	 */
+	/** One corpus fixture and its removals, named by course rather than by handle. */
 	struct FParityCase
 	{
 		const TCHAR* Name;
@@ -859,7 +673,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 		/** Every piece whose box centre sits at this Z is removed before the solve. */
 		double RemoveCourseAtZCm;
 
-		/** And of those, only the one nearest this X — or every one of them if not finite. */
+		/** Of those, only the one nearest this X; all of them if Max. */
 		double RemoveNearestXCm;
 	};
 
@@ -891,33 +705,26 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 	};
 
 	const FParityCase Corpus[] = {
-		/* A plain running-bond wall, intact — the everyday case a player lays. */
 		{ TEXT("running 3x3, intact"),
 			LayWall(3, 3, DestructionWallCases::EWallBond::Running, INDEX_NONE, INDEX_NONE),
 			TNumericLimits<double>::Max(), TNumericLimits<double>::Max() },
 
-		/* The same wall with one brick pulled from under it — load has to find another path. */
+		// Load must find another path.
 		{ TEXT("running 3x3, one brick out of the bottom course"),
 			LayWall(3, 3, DestructionWallCases::EWallBond::Running, INDEX_NONE, INDEX_NONE),
 			Course0ZCm, 22.5 },
 
-		/* Stack bond: every head joint lines up, so the load paths are a different graph. */
+		// Aligned head joints give a different load graph.
 		{ TEXT("stack 3x3, intact"),
 			LayWall(3, 3, DestructionWallCases::EWallBond::Stack, INDEX_NONE, INDEX_NONE),
 			TNumericLimits<double>::Max(), TNumericLimits<double>::Max() },
 
-		/* A corbelled wall — eccentric load, the case where moments decide rather than force. */
+		// Eccentric load, where moments decide.
 		{ TEXT("running 3x3 corbelling from course 1"),
 			LayWall(3, 3, DestructionWallCases::EWallBond::Running, 1, INDEX_NONE),
 			TNumericLimits<double>::Max(), TNumericLimits<double>::Max() },
 
-		/*
-		 * And one that must fall: take the whole bottom course away and nothing left
-		 * touches the earth, so the LP has no admissible equilibrium however it is posed. A
-		 * corpus in which every fixture stands would compare two identical rows of "nothing
-		 * happened" and pin nothing about a collapse agreeing across the two poses — the
-		 * floor below asserts that at least one fixture genuinely fells pieces.
-		 */
+		// Must fall: nothing touches the earth. Ensures the corpus contains a collapse.
 		{ TEXT("running 3x3 with its whole bottom course removed"),
 			LayWall(3, 3, DestructionWallCases::EWallBond::Running, INDEX_NONE, INDEX_NONE),
 			Course0ZCm, TNumericLimits<double>::Max() },
@@ -928,7 +735,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 	{
 		const double Scale = FMath::Max(1.0, FMath::Max(FMath::Abs(A), FMath::Abs(B)));
 
-		/* Written so a NaN on either side answers FALSE rather than slipping through a `>`. */
+		// `<=` so a NaN answers false.
 		return FMath::Abs(A - B) <= 1.0e-9 * Scale;
 	};
 
@@ -948,7 +755,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* --- THE CUT, applied identically to both copies ------------------------------------- */
+		// The cut, applied identically to both copies.
 
 		int32 Removed = 0;
 
@@ -989,7 +796,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* --- THE FIXTURE GUARDS: planar, below the cap, and not empty ------------------------ */
+		// Fixture guards: planar, below the cap, not empty.
 
 		int32 Posed = 0;
 		int32 PosedOutOfPlane = 0;
@@ -1018,8 +825,6 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 				Row.Name, Planar.Structure.NumPieces()),
 			Planar.Structure.NumPieces() <= 200);
 
-		/* --- THE TWO SOLVES ------------------------------------------------------------------ */
-
 		Volumetric.Structure.SetThreeDimensional(true);
 
 		const int32 PlanarPasses = Planar.Structure.SolveAndBreak();
@@ -1033,7 +838,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 				Row.Name),
 			VolumetricPasses, PlanarPasses);
 
-		/* --- THE VERDICT: every piece's support, the exact enum ------------------------------- */
+		// Verdict: every piece's support enum.
 
 		int32 FellPlanar = 0;
 
@@ -1055,7 +860,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 
 		CasesWithAFall += FellPlanar > 0 ? 1 : 0;
 
-		/* --- THE SEVERED SET, and the pass each joint went in --------------------------------- */
+		// Severed set and the pass each joint went in.
 
 		for (int32 Joint = 0; Joint < Planar.Structure.NumConnections(); ++Joint)
 		{
@@ -1076,7 +881,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 				Planar.Structure.GetBreakPass(Joint));
 		}
 
-		/* --- THE READOUT — the currency the re-split would break first ------------------------- */
+		// Readout: the first thing a re-split would break.
 
 		int32 PresentHere = 0;
 
@@ -1138,7 +943,7 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 			Row.Name, PlanarPasses, VolumetricPasses, FellPlanar, PresentHere));
 	}
 
-	/* --- THE FLOORS: this corpus must actually exercise both arms ----------------------------- */
+	// Floors: the corpus must exercise both a collapse and a readout.
 
 	TestTrue(
 		*FString::Printf(
@@ -1160,44 +965,16 @@ bool FPlanarPoseChangesNoVerdictTest::RunTest(const FString& Parameters)
 }
 
 /*
- * The regional bridge poses its region on the same rule — B2.
+ * B2: the regional bridge applies the same pose rule to the joints it poses (region plus
+ * grounded boundary ring). `BuildRegionalProblem` is a separate function from
+ * `BuildRigidBlockProblem` (RigidBlockBridge.h), so its pose choice needs its own pin:
+ * reverting it to the flag alone turns cases one and three red here while the whole-structure
+ * tests stay green (measured 2026-09-16). The prover exists for latency, so a needless 3D pose
+ * costs it most.
  *
- * `BuildRegionalProblem` chooses its pose from the joints it poses — the region, its
- * grounded boundary ring, and nothing else — so a planar neighbourhood carved out of a
- * 3D-flagged structure is posed in 2D, and a neighbourhood containing a posed out-of-plane
- * joint is posed in 3D.
- *
- * Why the regional bridge needs its own coverage: it is a separate function from
- * `BuildRigidBlockProblem` on purpose (RigidBlockBridge.h) — the shared bridge poses the
- * problems the flagship scenarios and the oracle sweep pin byte-for-byte, and forcing a
- * boundary set grounded inside it would shift them. Two functions means two copies of the
- * pose choice, and `Core.Oracle.PlanarProblemUnderThe3DFlagPosesIn2D` exercises only one:
- * reverting the regional copy alone leaves that test green while every regional prove on a
- * straight player wall silently pays the 3D solve. It matters more here than at the
- * whole-structure bridge, because the prover's whole reason for existing is latency — it
- * is what makes a cap-200 corner-hang 0.53 s instead of 25 minutes (CURRENT_STATE,
- * grow-from-modest), so a regional pose that goes 3D on a planar wall spends the saving
- * twice over. Measured, not assumed (2026-09-16): replacing the regional pose choice with
- * the flag alone turns cases one and three red here while leaving the whole-structure
- * planar-pose tests all green — the gap this test closes.
- *
- * The region is what decides, not the structure around it. Case three is the
- * discriminating one, the regional analogue of the whole-structure bridge's earth-level L:
- * the structure contains Y-normal joints, but the region does not pose any of them — one
- * end of each is a piece outside R u B, or both ends are the grounded boundary ring. An
- * implementation that asked the structure's flag, or scanned `NumConnections()`, or reused
- * the whole-structure predicate over the whole piece array, gets that case wrong in the
- * expensive direction. Case two is its mirror: a region whose interior contains a Y-normal
- * joint must go on being posed 3D, since the 2D X-Z oracle cannot express one.
- *
- * What is asserted, and the observable: `FOracleProblem::Dim` off `BuildRegionalProblem`'s
- * own output, plus the refusal string on the one case that must stay refused — the
- * mechanism, the posed dimension itself, binary and exact, never a solve time or pivot count.
- *
- * No ticking world needed: hand-laid layouts and one bridge call each.
- *
- * Units: no force is compared against a strength anywhere here, so the 1 N = 100 uu
- * boundary is never crossed. Every reading is a dimension, a count, or a string.
+ * Case three is the discriminator: Y-normal joints exist but the region poses none of them.
+ * Case two is its mirror. Observable: `FOracleProblem::Dim`, plus the refusal string.
+ * No ticking world; no force-vs-strength comparison.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRegionalBridgePosesThePlanarRegionInTwoDTest,
@@ -1210,7 +987,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 	using namespace PlanarPoseTestSupport;
 	using namespace RigidBlockOracle;
 
-	/** Every piece joined to `Piece` by a live joint — "its bed and head neighbours", from the graph. */
+	/** Every piece joined to `Piece` by a live joint. */
 	auto NeighboursOf = [](const FStructure& Structure, int32 Piece)
 	{
 		TSet<int32> Out;
@@ -1237,7 +1014,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 		return Out;
 	};
 
-	/* --- ONE: A COURSE-1 BRICK AND ITS RING, OUT OF A 3D-FLAGGED STRAIGHT WALL ---------------- */
+	// One: a course-1 brick and its ring from a 3D-flagged straight wall.
 
 	{
 		FBrickLayout Wall;
@@ -1250,7 +1027,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 
 		Wall.Structure.SetThreeDimensional(true);
 
-		/* The first ungrounded piece the producer laid: a course-1 brick, bedded on two below. */
+		// The first ungrounded piece: a course-1 brick.
 		int32 Seed = INDEX_NONE;
 
 		for (int32 Piece = 0; Piece < Wall.Structure.NumPieces(); ++Piece)
@@ -1323,7 +1100,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim2D));
 	}
 
-	/* --- TWO: A REGION WHOSE INTERIOR HOLDS A Y-NORMAL JOINT IS STILL POSED IN 3D ------------- */
+	// Two: a region whose interior holds a Y-normal joint is still posed in 3D.
 
 	{
 		FBrickLayout Corner;
@@ -1336,7 +1113,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 
 		Corner.Structure.SetThreeDimensional(true);
 
-		/* The two course-1 rotated bricks, and the three course-0 returns they bed onto. */
+		// The two course-1 bricks, bedded on the three course-0 returns.
 		const TSet<int32> Region{ 4, 5 };
 		const TSet<int32> Boundary{ 1, 2, 3 };
 
@@ -1383,7 +1160,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim3D));
 	}
 
-	/* --- THREE: Y-NORMAL JOINTS THE REGION DOES NOT POSE BUY NO 3D POSE ----------------------- */
+	// Three: Y-normal joints the region does not pose do not make it 3D.
 
 	{
 		FBrickLayout Corner;
@@ -1396,8 +1173,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 
 		Corner.Structure.SetThreeDimensional(true);
 
-		/* The course-1 stretcher alone, held by the two course-0 stretchers under it. Pieces 2 and
-		 * 3 — the whole Y-leg — are outside R u B and therefore absent. */
+		// The course-1 stretcher on the two below it; the Y-leg (pieces 2, 3) is outside R u B.
 		const TSet<int32> Region{ 4 };
 		const TSet<int32> Boundary{ 0, 1 };
 
@@ -1468,7 +1244,7 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim2D));
 	}
 
-	/* --- FOUR: THE UNFLAGGED PATH IS UNCHANGED — 2D STAYS 2D, AND A CORNER STAYS REFUSED ------ */
+	// Four: unflagged path unchanged; 2D stays 2D and a corner stays refused.
 
 	{
 		FBrickLayout Wall;
@@ -1554,69 +1330,22 @@ bool FRegionalBridgePosesThePlanarRegionInTwoDTest::RunTest(const FString& Param
 }
 
 /*
- * Coplanar normals are not enough: rows at different Y must be posed in 3D — B3.
+ * B3: coplanar normals are not enough. A 3D-flagged structure with every posed normal in X-Z is
+ * still posed 3D when the Ys entering its rows (ungrounded centroids, posed patch centres)
+ * differ. A bed patch at one Y under a weight at another is a real out-of-plane moment; the 2D
+ * projection erases the lever arm and a toppling overhang stands.
  *
- * A 3D-flagged structure whose posed joint normals all lie in X-Z is still posed in 3D
- * whenever the Y values entering its equilibrium rows — each ungrounded block's centroid
- * and each posed patch's centre — are not one common Y.
+ * Y-cantilever: shifted 7.5 cm, the weight acts 3.75 cm from a patch of half-extent 1.375 on
+ * DryStone, so it must fall. Pose and verdict are both asserted (GetPieceSupport, not
+ * displacement). With one joint the router's overturning gate (needs >= 2 load paths) cannot
+ * act, so the LP decides. The Y = 0 control must stand.
  *
- * Why the normals alone cannot decide it, the failure this test exists for: "every posed
- * normal is in X-Z" is the obvious half of the planarity test and is not sufficient.
- * Moments are taken about each block's own centroid with lever arms out to its contacts,
- * so a bed joint whose patch sits at one Y under a block whose weight acts at another
- * generates a genuine out-of-plane moment demand with a +Z normal and nothing else.
- * Project that onto a single plane and the lever arm vanishes: an overhang that topples
- * reads as a centred load and stands. Both fixtures here have zero Y-normal joints, so a
- * predicate that scanned only normals would call both planar, pose both in 2D, and be
- * wrong in the expensive direction, where the 2D answer is not conservative but a
- * different structure.
+ * Plank on two walls: asserts the pose only, since a symmetric plank stands either way. Its
+ * control spans X.
  *
- * The two fixtures, and why each is asserted differently. The Y-cantilever asserts the
- * pose and the consequence: one brick bedded on another and shoved 7.5 cm along Y leaves
- * 2.75 cm of the 10.25 cm wythe overlapping, so the bed patch spans Y 2.375..5.125 with
- * its centre at 3.75 and a Y half-extent of 1.375, while the brick's weight acts at
- * Y = 7.5 — 2.73 kern-widths outside the patch, on a `DryStone` joint with zero tensile
- * and cohesion. There is no admissible force system: it must fall. The control is the
- * same two bricks with the top one at Y = 0, a fully-bedded brick that must stand. The
- * verdict is asserted, not just the dimension, because a dimension reading alone would be
- * satisfied by a predicate that answers 3D for the wrong reason — `SolveAndBreak` felling
- * the brick is the outcome the pose exists to get right, and the two readings fail
- * independently. No displacement is asserted anywhere (DESIGN §4): the reading is
- * `GetPieceSupport`, an enum. The overturning gate is not what decides it either:
- * `PieceOverturnsOffItsSupports` is gated on `LoadPaths[Current].Num() >= 2`, and this
- * brick has exactly one joint, so the router's gate cannot reach it and the LP is the only
- * authority that can answer (two pieces is far below the 200-block `EquilibriumGateBlockCap`).
- *
- * Two walls and one plank asserts the dimension alone, deliberately: a timber plank
- * spanning two brick bearings 40 cm apart in Y, both bed patches carrying +/-Z normals,
- * the plank's centroid at Y = 20 and the two patch centres at Y = 0.0625 and Y = 39.9375
- * — the roof-on-two-walls shape the predicate's own header names. Only the pose is read
- * because a symmetric plank on two symmetric bearings stands either way; its verdict would
- * discriminate nothing. Its control is the identical plank and bearings rotated to span X,
- * where every row really is at one Y.
- *
- * Which fixture pins which half — measured by mutation 2026-09-16, not assumed.
- * `PosedProblemLeavesThePlane` asks its common-Y question about two kinds of row, and the
- * two fixtures do not cover one each: deleting the patch-centre check
- * (`SitsOffThePlane(Joint.InterfaceCentreCm.Y)`) turns both the cantilever (poses 2D,
- * solves in 0 passes, reads Supported) and the plank (poses 2D) red. Deleting the
- * ungrounded-block centroid check turns the cantilever red (poses 2D and stands) but
- * leaves the plank green, since its two bearing patches disagree with each other and the
- * patch check alone catches it. So the cantilever is the fixture that pins both halves —
- * the one to look at first if this test ever goes red — and the plank pins the
- * patch-centre half while giving the shape a reader recognises. Do not "simplify" by
- * dropping the cantilever.
- *
- * What is asserted, and the observable: `FOracleProblem::Dim` off `BuildRigidBlockProblem`,
- * and `FStructure::GetPieceSupport` after `SolveAndBreak` on the cantilever — mechanism
- * and outcome, never a proxy.
- *
- * No ticking world needed: `SolveAndBreak` is a world-free structural cascade, not a Chaos tick.
- *
- * Units: nothing compares a force against a strength, so the conversion boundary is not
- * crossed. Masses come from `PieceMassKg` at published densities (clay brick 1.9 g/cm3,
- * C24 softwood 0.42 g/cm3), which take no conversion, and every assertion reads a
- * dimension or a support enum.
+ * Mutation-checked 2026-09-16: dropping the patch-centre check reddens both fixtures; dropping
+ * the centroid check reddens only the cantilever. Do not drop the cantilever.
+ * No ticking world; no force-vs-strength comparison.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCoplanarNormalsAtDifferentYPoseInThreeDTest,
@@ -1631,7 +1360,7 @@ bool FCoplanarNormalsAtDifferentYPoseInThreeDTest::RunTest(const FString& Parame
 	/** The brick's Y shove: 7.5 cm of the 10.25 cm wythe, leaving 2.75 cm of bed. */
 	constexpr double CantileverOffsetYCm = 7.5;
 
-	/* --- ONE: THE Y-CANTILEVER IS POSED IN 3D, AND FALLS ------------------------------------- */
+	// One: the Y-cantilever is posed in 3D and falls.
 
 	{
 		FHandLaidStructure Fixture;
@@ -1714,7 +1443,7 @@ bool FCoplanarNormalsAtDifferentYPoseInThreeDTest::RunTest(const FString& Parame
 			static_cast<int32>(EPieceSupport::Falling));
 	}
 
-	/* --- TWO: THE CONTROL — THE SAME TWO BRICKS FULLY BEDDED, POSED IN 2D, AND STANDING ------- */
+	// Two: control. Fully bedded, posed in 2D, standing.
 
 	{
 		FHandLaidStructure Fixture;
@@ -1763,7 +1492,7 @@ bool FCoplanarNormalsAtDifferentYPoseInThreeDTest::RunTest(const FString& Parame
 			static_cast<int32>(EPieceSupport::Supported));
 	}
 
-	/* --- THREE: TWO WALLS AND ONE PLANK — CENTROID Y BETWEEN TWO BEARING Ys ------------------- */
+	// Three: plank on two walls spanning Y.
 
 	{
 		FHandLaidStructure Fixture;
@@ -1821,7 +1550,7 @@ bool FCoplanarNormalsAtDifferentYPoseInThreeDTest::RunTest(const FString& Parame
 			static_cast<int32>(Problem.Dim), static_cast<int32>(EOracleDim::Dim3D));
 	}
 
-	/* --- FOUR: THE CONTROL — THE SAME PLANK AND BEARINGS SPANNING X, ALL AT ONE Y ------------- */
+	// Four: control. The same plank spanning X, all at one Y.
 
 	{
 		FHandLaidStructure Fixture;

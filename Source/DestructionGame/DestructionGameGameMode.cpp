@@ -13,30 +13,13 @@
 #include "World/DestructionScenarios.h"
 #include "World/DestructionStructureSubsystem.h"
 
-/*
- * File-local names sit in a named namespace and carry a GameMode prefix. An anonymous
- * namespace is private to a translation unit rather than to a file, and a unity build merges
- * many files into one, so two file-local names that collide are a hard compile error between
- * files that never refer to each other. See CURRENT_STATE.md.
- */
+// Named, GameMode-prefixed namespace: unity builds merge translation units (CURRENT_STATE.md).
 namespace DestructionGameModeScenario
 {
-	/**
-	 * The aspect a level frames for; 16:9 because nothing here can measure a viewport.
-	 *
-	 * DestructionScenarios::ViewpointFor needs height-over-width to know how far back a tall
-	 * structure must be seen from. There is no UGameViewportClient to ask before the first frame
-	 * (and every automation run is -nullrhi and has none at all), so this is the standing answer.
-	 */
+	/** Framing aspect, assumed 16:9: no viewport exists before the first frame, or ever under -nullrhi. */
 	constexpr double GameModeFrameAspectHeightOverWidth = 1080.0 / 1920.0;
 
-	/**
-	 * The row that takes a brick out of the world, looked up by label.
-	 *
-	 * By label so nothing hard-codes a position in the table — the same lookup
-	 * Tests/StructureIntegrationTest.cpp makes, since actions are data and a level reaching for
-	 * AllPieceActions()[0] would silently cut with whatever action was added first.
-	 */
+	/** The Delete action, looked up by label rather than table position. */
 	const FPieceAction* GameModeScenarioCutAction()
 	{
 		for (const FPieceAction& Action : AllPieceActions())
@@ -50,7 +33,7 @@ namespace DestructionGameModeScenario
 		return nullptr;
 	}
 
-	/** How a selection was reached, as a word a human reading the log can act on. */
+	/** How a scenario was selected, for the log. */
 	FString GameModeSelectionName(DestructionScenarios::EScenarioSelection How)
 	{
 		switch (How)
@@ -62,7 +45,7 @@ namespace DestructionGameModeScenario
 		}
 	}
 
-	/** Every row's name, so a player who mistyped is told what they could have typed. */
+	/** Every scenario name, logged when a requested one does not exist. */
 	FString GameModeScenarioNames()
 	{
 		TArray<FString> Names;
@@ -75,20 +58,13 @@ namespace DestructionGameModeScenario
 		return FString::Join(Names, TEXT(", "));
 	}
 
-	/**
-	 * The plot an empty level is framed on, half-size in cm.
-	 *
-	 * A build sandbox has no structure, so it has no bounds — every other row frames on the
-	 * union of the boxes it laid, but an empty box collapses onto ViewpointFor's minimum standoff
-	 * and aims at the origin from wherever that happens to be. So the level invents the ground
-	 * instead: three by three metres, a metre of headroom, centred on the origin.
-	 */
+	/** Half-size of the build sandbox's framed plot, cm (3 x 3 m, 1 m headroom); an empty level has no bounds. */
 	const FVector GameModeBuildPlotHalfSizeCm(150.0, 150.0, 50.0);
 
-	/** Put every player in front of a viewpoint: the control rotation, and the pawn's place. */
+	/** Set every player's control rotation and pawn location to the viewpoint. */
 	void GameModeFramePlayers(UWorld& World, const DestructionScenarios::FViewpoint& Viewpoint)
 	{
-		// The control rotation is the one that matters: the flying pawn is an ADefaultPawn and takes its facing from its controller, overwriting anything set on the pawn directly.
+		// Control rotation, not pawn rotation: the ADefaultPawn takes its facing from the controller.
 		for (FConstPlayerControllerIterator It = World.GetPlayerControllerIterator(); It; ++It)
 		{
 			APlayerController* const Controller = It->Get();
@@ -108,14 +84,8 @@ namespace DestructionGameModeScenario
 	}
 
 	/**
-	 * Open the session for every player: the strip up, and on a plot they lay themselves, Build mode.
-	 *
-	 * Through the controller's one door rather than by setting a mode field: OnToolbarButton is
-	 * what opens the build, raises the cursor and redraws the strip, so setting the field
-	 * directly would put a player in Build mode with no structure behind it.
-	 *
-	 * The strip goes up on every row, including the twenty-eight that open in Destroy — it is how
-	 * the player reaches Run structure on the wall just laid, and reaches Build mode at all.
+	 * Show the session toolbar for every player, and on the build sandbox enter Build mode via
+	 * OnToolbarButton (which also opens the build and raises the cursor).
 	 */
 	void GameModeOpenSession(UWorld& World, bool bBuildSandbox)
 	{
@@ -138,7 +108,7 @@ namespace DestructionGameModeScenario
 		}
 	}
 
-	/** Every box of a laid layout, unioned: the structure a player is about to be shown. */
+	/** Union of every box in the layout. */
 	FBox GameModeScenarioBounds(const DestructionLayout::FBrickLayout& Layout)
 	{
 		FBox BoundsCm(ForceInit);
@@ -174,21 +144,13 @@ void ADestructionGameGameMode::BeginPlay()
 		return;
 	}
 
-	/*
-	 * Which scenario: the option wins, else the map, else the default. The whole rule lives in
-	 * the world-free DestructionScenarios::IndexForOptionsAndMap, since a map name arrives in
-	 * half a dozen decorations that a code-built test world cannot produce.
-	 */
+	// Option, else map name, else default; the rule is world-free so it can be tested.
 	DestructionScenarios::EScenarioSelection How = DestructionScenarios::EScenarioSelection::Default;
 
 	const int32 Row = DestructionScenarios::IndexForOptionsAndMap(
 		OptionsString, World->GetMapName(), How);
 
-	/*
-	 * Recorded before anything is built, and as a pair: the row alone can't carry it, since a
-	 * URL naming a nonexistent scenario and one naming nothing at all both land on the default
-	 * row, and a mistyped one must be tellable apart from outside.
-	 */
+	// Row and how, since a mistyped scenario and none at all both land on the default row.
 	SelectedScenarioRow = Row;
 	SelectedScenarioHow = How;
 
@@ -199,7 +161,6 @@ void ADestructionGameGameMode::BeginPlay()
 
 	const DestructionScenarios::FScenario& Scenario = DestructionScenarios::Catalogue()[Row];
 
-	// Said aloud, a thin read of the two values above: a mistyped `?Scenario=` used to give a silently different wall.
 	UE_LOG(LogTemp, Log, TEXT("Scenario '%s' (%s), selected %s"),
 		*Scenario.Name.ToString(), Scenario.Title, *GameModeSelectionName(How));
 
@@ -212,12 +173,8 @@ void ADestructionGameGameMode::BeginPlay()
 	}
 
 	/*
-	 * A build sandbox is opened empty, and the branch comes before the build rather than after:
-	 * the row describes no structure — no producer, a default wall spec, no cut — so
-	 * DestructionScenarios::Build would refuse it, returning from begin-play before anything is
-	 * framed and leaving the player facing wherever they spawned. So the row is read first:
-	 * nothing is laid, BuiltStructureId stays INDEX_NONE, no hold is armed, and the player is
-	 * put on the plot anyway. The row is still recorded above, so the level still names itself.
+	 * The build sandbox lays nothing, so branch before Build (which would refuse it) and still
+	 * frame the player on the plot. No structure, no hold.
 	 */
 	if (Scenario.bBuildSandbox)
 	{
@@ -228,17 +185,12 @@ void ADestructionGameGameMode::BeginPlay()
 				GameModeFrameAspectHeightOverWidth,
 				Scenario.Framing));
 
-		// The one level that lays nothing opens in Build mode — Destroy here would offer an empty plot and no way to fill it.
 		GameModeOpenSession(*World, /*bBuildSandbox*/ true);
 
 		return;
 	}
 
-	/*
-	 * The catalogue lays the wall and resolves the cut together, and refuses both if either fails —
-	 * a cut centre naming no brick would otherwise give a level that stands there looking intact
-	 * and never does anything, reading exactly like a level whose wall correctly stood.
-	 */
+	// Lays the wall and resolves the cut together; refuses both if either fails.
 	DestructionLayout::FBrickLayout Layout;
 	TArray<int32> CutPieces;
 
@@ -247,50 +199,32 @@ void ADestructionGameGameMode::BeginPlay()
 		return;
 	}
 
-	// A refused build leaves BuiltStructureId at INDEX_NONE, which already means "built no structure"; BuildLayout spends no id on a refusal either.
+	// INDEX_NONE on refusal.
 	BuiltStructureId = Subsystem->BuildLayout(Layout);
 
 	/*
-	 * Left solved but not settled, which is what holding a structure as laid means.
-	 *
-	 * Solved, because an unsolved structure has no support answer for any piece —
-	 * EPieceSupport::Falling is what an absent answer reads as, so the strain readout would
-	 * paint every brick unsupported and the first click would push against nothing computed.
-	 *
-	 * Not settled, because settling is what the player came to watch: seven of the nine rows cut
-	 * nothing and are condemned by their own geometry instead (a corbel's root joint is over
-	 * capacity the moment it exists), so settling here would hand 36 of E36's 519 pieces to
-	 * physics before the player's first frame was drawn. RunScenario below is where the giving
-	 * happens, once the hold has expired.
+	 * Solved but not settled. Solved, since without a support answer every piece reads Falling.
+	 * Not settled, since settling is what the player watches: rows that cut nothing fail by their
+	 * own geometry, and settling now would drop pieces before the first frame. RunScenario settles
+	 * after the hold.
 	 */
 	if (FStructureBinding* const Binding = Subsystem->Find(BuiltStructureId))
 	{
 		Binding->SolveLoads();
 	}
 
-	/*
-	 * The player is put in front of it — the point of a level as opposed to the headless fixture
-	 * it's made of. The standoff is derived from what was actually laid, not a constant, because
-	 * the rows are different shapes: the seven-wide wall is governed by height, the thirty-wide
-	 * one by width, and framing on either extent alone crops the other.
-	 */
+	// Frame on the laid bounds, since rows differ in shape (some height-bound, some width-bound).
 	GameModeFramePlayers(
 		*World,
 		DestructionScenarios::ViewpointFor(
 			GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth, Scenario.Framing));
 
-	// Strip up, session in Destroy — where a level that has already laid a wall wants the player, since the click they're about to make is on it.
 	GameModeOpenSession(*World, /*bBuildSandbox*/ false);
 
 	/*
-	 * The level is armed rather than run: a player who joins to find the hole already there has
-	 * watched nothing happen. Armed on every row, including the ones that cut nothing, because
-	 * the hold is the level's one moment rather than the cut's — a corbel still has something to
-	 * show, how it was laid and then what settling does to it.
-	 *
-	 * A hold of zero, or a NaN, arms nothing: FTimerManager::SetTimer clears the timer for any
-	 * rate its own `> 0` test rejects, and every comparison against NaN is false — the safe
-	 * degenerate reading is "holds the structure as laid and never runs", not one that vanished.
+	 * Arm the hold on every row, so the player sees the structure as laid before anything happens.
+	 * A zero or NaN hold arms nothing (SetTimer rejects rates failing `> 0`), so the structure just
+	 * holds.
 	 */
 	ScenarioCutRefs.Reset();
 
@@ -319,12 +253,8 @@ DestructionScenarios::FScenarioLabel ADestructionGameGameMode::GetScenarioLabel(
 	const UWorld* const World = GetWorld();
 
 	/*
-	 * The hold timer's own remainder, asked every time, rather than a start time this class
-	 * subtracts from — the level runs off world time including pauses and dilation, so a second
-	 * clock here would drift from the event it announces.
-	 *
-	 * An unarmed handle answers -1 and a torn-down world answers nothing, both of which
-	 * BuildScenarioLabel takes as no time left; the world is null-checked before it is touched.
+	 * Read the timer's own remainder so pauses and dilation cannot make a second clock drift. An
+	 * unarmed handle (-1) or missing world both read as no time left.
 	 */
 	const double SecondsUntilCut = World != nullptr
 		? static_cast<double>(World->GetTimerManager().GetTimerRemaining(ScenarioHoldTimer))
@@ -350,24 +280,15 @@ void ADestructionGameGameMode::RunScenario()
 
 	if (ScenarioCutRefs.Num() > 0 && CutAction != nullptr)
 	{
-		/*
-		 * The batched commit, the door the player's own delete goes through: runs the action
-		 * against every named brick, settles the wall once behind the last, pushes that one
-		 * answer onto the world and destroys the orphaned meshes — a multi-brick cut costs one
-		 * settle. This already settles a cutting row, so it must not be settled again below.
-		 */
+		// The player's own batched delete path: one settle for the whole cut, so no second settle below.
 		Subsystem->CommitPieceActionForAll(ScenarioCutRefs, *CutAction);
 
-		// The label is told after the commit, not before: the flag states the brick has gone, so a cut that failed would otherwise read as done while the wall stood whole.
+		// Set after the commit so a failed cut never reads as done.
 		bScenarioCutHasFired = true;
 	}
 	else
 	{
-		/*
-		 * A row that cuts nothing still runs, and settling is what it runs: every joint over
-		 * capacity gives, and what the solver stops holding up goes to physics — for a corbel,
-		 * the entire story the level exists to tell. The flag is not set here: nothing was cut.
-		 */
+		// A row with no cut just settles. Nothing was cut, so the flag stays clear.
 		Subsystem->SolveAndPush(BuiltStructureId);
 	}
 }

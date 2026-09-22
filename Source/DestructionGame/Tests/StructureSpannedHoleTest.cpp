@@ -11,12 +11,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * NAMED NAMESPACE, not anonymous, and named for what it holds. An anonymous namespace is private
- * to a TRANSLATION UNIT rather than to a file, and a unity build merges many files into one — at
- * which point two anonymous namespaces in the blob are the SAME namespace and identically-named
- * helpers in files that never refer to each other are a hard compile error.
- */
+// Named namespace: unity builds merge translation units, so anonymous-namespace helpers can collide.
 namespace StructureSpannedHoleTestSupport
 {
 	using namespace DestructionLayout;
@@ -24,30 +19,24 @@ namespace StructureSpannedHoleTestSupport
 	using namespace StructureArchingTestSupport;
 
 	/**
-	 * THE THREE BRICKS THE PLAYER DELETES: full bricks 1, 2 and 3 of course 1, x = 33.75 to 78.75.
-	 *
-	 * Course 1 runs half bat, then full bricks at 11.25, 33.75, 56.25, 78.75, 101.25, 123.75, then
-	 * half bat. Taking the middle three leaves the void spanning x = 22.5 to 90 — three coordinating
-	 * cells, 67.5 cm — with a full column of wall standing either side of it, so nothing below is a
-	 * free-end effect.
+	 * The cut: full bricks 1-3 of course 1 (x = 33.75 to 78.75), leaving a 67.5 cm void from
+	 * x = 22.5 to 90 with wall standing either side, so there are no free-end effects.
 	 */
 	constexpr int32 CutCourse = 1;
 	constexpr int32 FirstCutBrickIndex = 1;
 	constexpr int32 CutCellCount = 3;
 
-	/** The course whose bricks lose their seats: the one immediately above the cut. */
+	/** The course above the cut, whose bricks lose their seats. */
 	constexpr int32 SpannedCourse = CutCourse + 1;
 
 	/**
-	 * THE FOUR BRICKS THE CUT LEAVES WITHOUT A COMPLETE SEAT, and the shape is the whole slice.
+	 * The four bricks left without a complete seat (the group):
 	 *
-	 *      course 2      [ 22.5 ][  45  ][ 67.5 ][  90  ]      the GROUP
+	 *      course 2      [ 22.5 ][  45  ][ 67.5 ][  90  ]      the group
 	 *      course 1   [11.25][ ---- ][ ---- ][ ---- ][101.25]  the cut
 	 *
-	 * The two on the OUTSIDE keep exactly one 10.25 x 10.25 patch each — those are the SPRINGINGS,
-	 * and they are the same half seat slice 1 already arches. The two in the MIDDLE keep NONE: both
-	 * bricks that carried them are gone, so under the two-tier rule they fall back to their head
-	 * joints and hang sideways off their neighbours.
+	 * The outer two (springings) keep one 10.25 x 10.25 half seat each. The middle two keep none
+	 * and fall back to their head joints.
 	 */
 	constexpr double LeftSpringingBrickXCm = ArchWallEvenBrickXCm(1);
 	constexpr double RightSpringingBrickXCm = ArchWallEvenBrickXCm(4);
@@ -55,38 +44,24 @@ namespace StructureSpannedHoleTestSupport
 	constexpr double LeftHangingBrickXCm = ArchWallEvenBrickXCm(2);
 	constexpr double RightHangingBrickXCm = ArchWallEvenBrickXCm(3);
 
-	/** The one seat each springing keeps: the course-1 full brick on its OUTBOARD side. */
+	/** The one seat each springing keeps: the course-1 brick on its outboard side. */
 	constexpr double LeftSpringingSeatXCm = ArchWallOddBrickXCm(0);
 	constexpr double RightSpringingSeatXCm = ArchWallOddBrickXCm(4);
 
 	/**
-	 * EVERY JOINT THE THREE DELETED BRICKS TAKE WITH THEM, COUNTED BY HAND OFF THE BOND.
-	 *
-	 * Four head joints along course 1 (the two inside the cut, plus one to the survivor at each
-	 * end); six bed joints down to course 0 and six up to course 2, since each deleted brick spans
-	 * two bricks below and carries two above. 4 + 6 + 6 = 16. The one-brick cut's equivalent count
-	 * is 6, and it is the same walk: a brick shares its two inner head joints with its neighbours in
-	 * the cut, so widening the hole by one cell adds five joints and not six.
-	 *
-	 * Pinned so that a cascade which happened to break exactly zero joints while the deletion
-	 * quietly took a seventeenth could not read as a wall that stood.
+	 * Joints removed with the cut, counted by hand: 4 heads along course 1, 6 beds down and 6 up.
+	 * 4 + 6 + 6 = 16. Pinned so an extra joint lost to the deletion cannot hide.
 	 */
 	constexpr int32 JointsLostWithTheCut = 16;
 
-	/** How many intact bed joints this piece is resting on RIGHT NOW. */
+	/** How many intact bed joints this piece currently rests on. */
 	inline int32 IntactSeatsUnder(const FStructure& Structure, int32 Piece)
 	{
 		int32 Seats = 0;
 
 		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
 		{
-			/*
-			 * A JOINT THAT HAS GIVEN IS NOT A SEAT, and forgetting to ask is a trap this fixture
-			 * inherits from slice 1's. GetJointRole is pure geometry and keeps answering for a
-			 * joint that has left the structure — deliberately, because what a given joint USED to
-			 * be is exactly what a debugger wants — so the joints that went with the deleted bricks
-			 * still report BedBeneath and a naive count says the hangers are fully seated.
-			 */
+			// GetJointRole is pure geometry and still answers for given joints, so check HasGiven too.
 			if (Structure.GetJointRole(Joint, Piece) == EJointRole::BedBeneath
 				&& !Structure.GetConnection(Joint).HasGiven())
 			{
@@ -138,67 +113,24 @@ namespace StructureSpannedHoleTestSupport
 }
 
 /**
- * A HOLE WIDER THAN ONE BRICK IS SPANNED: the bricks left with NO seat at all stop hanging from
- * their head joints and are re-seated onto the group's abutment joints, so nothing comes down.
+ * A hole wider than one brick is spanned: bricks left with no seat are re-seated onto the
+ * group's abutment joints, so nothing comes down (ARCHING_DESIGN.md slice 2).
  *
- * WHY SLICE 1 DOES NOT ALREADY DO THIS, AND THE REASON IS THE POINT OF THE SLICE. Delete three
- * bricks instead of one and the course above keeps two half-seated bricks at the EDGES and two
- * with no seat whatever in the MIDDLE. The middle pair fall back to their head joints, so the
- * edge brick's neighbour is now hanging FROM it — and ARCHING_DESIGN's trap 3 says an abutment
- * that rests on the piece it is abutting is not an abutment, it is two bricks propping each other
- * over open air. Slice 1's gate therefore REFUSES the arch, correctly, and the springing goes back
- * to cantilevering at 1.63 of capacity. Worse, the two hangers are each other's support, which is
- * a two-node cycle: SolveLoads strands them both, and the brick above resting only on the pair
- * loses its path to the ground too. Slice 2 supersedes that refusal by GROUPING — contiguous
- * incomplete-seat pieces form a group through their head joints, and the group is abutted when it
- * has a live seat on BOTH sides of its centre — which re-seats the hangers onto joints OUTSIDE the
- * group and is acyclic by construction.
+ * With a three-brick cut, the two middle bricks above hang off their head joints and prop each
+ * other (a two-node cycle SolveLoads strands), and slice 1's trap-3 gate correctly refuses the
+ * arch. Slice 2 groups contiguous incomplete-seat pieces through head joints; a group with a
+ * live seat on both sides of its centre re-seats onto joints outside itself, acyclically.
  *
- * THE RED CLAIM IS THE ROUTING, NOT A NUMBER. Today the two middle bricks read Stranded and a
- * wedge above them reads Falling; the cantilevering springings then break and the cascade takes
- * the wall. So the outcome assertion is a count of joints that FAILED UNDER LOAD, and the
- * mechanism assertion is that no piece is left unrouted. Neither is a displacement: two pieces can
- * sever and stay resting exactly where they were, so how far anything moved would say nothing.
+ * Asserts routing (nothing Stranded/Falling) and joints failed under load, never displacement.
+ * Springing loads are derived from the intact wall: all four columns must leave through the two
+ * seats (sum exact to 1e-9, each within 2% for mild asymmetry). The derived utilisation is
+ * 0.0284; ARCHING_DESIGN's 0.036 is the arithmetic for five columns, i.e. a one-cell-wider hole.
+ * The derived figure is asserted.
  *
- * WHAT THE SPRINGING MUST READ, AND IT IS DERIVED HERE RATHER THAN COPIED. Every load figure comes
- * out of the INTACT wall's own solve: the four group bricks each carry a column, and after the cut
- * every one of those columns has to leave through the two surviving seats, because there is nothing
- * else left for it to go through. That is conservation and not a model — it holds whatever rule
- * slice 2 uses to divide the group's load — so the sum of the two springing forces is pinned to
- * 1e-9 and each one to 2%, which is slack for the wall's mild left-right asymmetry and for nothing
- * else.
- *
- * AND IT DISAGREES WITH ARCHING_DESIGN.md's OWN PREDICTION, WHICH IS SAID OUT LOUD RATHER THAN
- * TUNED AWAY. The design predicts a springing utilisation of about 0.036. Four columns through two
- * seats gives 0.0284, and 0.036 is what FIVE columns through two seats gives — i.e. the design's
- * figure is the arithmetic for a hole one cell WIDER than the one it describes, because an N-cell
- * cut leaves N - 1 unseated bricks and 2 half-seated ones, not N and 2. The number asserted below
- * is the derived one. If the implementation lands on 0.036 this test fails, and that is deliberate:
- * whichever of the two is wrong should be found here.
- *
- * THE UTILISATION IDENTITY IS WRITTEN TO SURVIVE SLICE 3. The tight claims are that the joint's
- * PUBLISHED moment sits exactly on the kern edge (sigma_b == |sigma_n|), that peak tension is
- * exactly zero, and that GetConnectionUtilisation agrees with ordinary beam theory on the force and
- * moment the solver reports. All three still hold once slice 3 puts a horizontal thrust into the
- * springing force; only "compression is the governing axis" would not, so that is printed rather
- * than asserted.
- *
- * TWO GATE ROWS THAT NO SLICE 1 TEST COULD CARRY. ARCHING_DESIGN records that gates 1 and 3 are
- * inert under any slice 1 fixture, and slice 2 is where they stop being:
- *
- *   - GATE 1, COMPLETE GEOMETRY, is what keeps both fuzz generators alive. They emit structures
- *     with no positions at all — 12,000 and 8,000 cases, and the only property tests over routing
- *     this project has — so a group rule that fired without geometry would put every one of them
- *     against an oracle that has never heard of an arch. The row below builds the exact topology of
- *     a spanned hole with nobody's position known and asserts it routes as it does today, to the
- *     last bit: the mutually-propping pair stays Stranded and their head joints carry exactly zero.
- *   - GATE 3, OUTSIDE THE KERN, catches the version of the cap written without the min. That row
- *     could not bite in slice 1's file because its oracle was built from the solver's own published
- *     moment, and an unconditional scale changes that moment — so the oracle moved with the defect.
- *     Here the expected moment is rebuilt from the fixture's own 0.5 cm lever arm instead.
- *
- * NEEDS A TICKING WORLD: NO. FStructure is plain arithmetic over a graph and Layout is plain
- * arithmetic over boxes; nothing here needs an actor, a tick or a renderer.
+ * Kern-edge moment, zero tension and beam-theory agreement survive slice 3's thrust; "compression
+ * governs" would not, so it is only printed. Gate 1 (no geometry, as the fuzzers emit) must route
+ * bit-identically to today. Gate 3 (inside the kern) uses an independently built moment so it
+ * catches a cap missing its min. No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureSpannedHoleTest,
@@ -211,11 +143,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	using namespace StructureSpannedHoleTestSupport;
 	using namespace StaircaseWallTestSupport;
 
-	/*
-	 * THE EXPECTED NUMBERS ARE RATIOS OF PUBLISHED STRENGTHS, so they mean what they say only
-	 * while the profile still carries the figures they were derived against. Asserted rather
-	 * than imported: a test that read the profile would agree with a wrong profile.
-	 */
+	// Pin the profile values the expectations were derived against.
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
@@ -232,14 +160,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 		ClayBrick.DensityGramsPerCubicCm == 1.9);
 
 	/*
-	 * ===================================================================================
-	 * PART 1 — THE INTACT WALL, AND THE FOUR COLUMNS IT HANDS THE HOLE.
-	 * ===================================================================================
-	 *
-	 * Everything the cut wall must carry is measured HERE, before anything is deleted. The bond
-	 * above the spanned course is untouched by the cut — every brick up there still rests on its
-	 * own two seats and still splits by area — so each group brick's column is the same number in
-	 * both walls, and the only question the cut asks is which joints it leaves by.
+	 * Part 1: the intact wall. Measure the column on each group brick before the cut; the bond
+	 * above is unchanged by it, so these columns are what the springings must carry.
 	 */
 	FBrickLayout Intact;
 
@@ -282,11 +204,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/*
-		 * TWO SEATS EACH, WHICH IS WHAT MAKES THIS THE BASELINE. An intact running-bond brick
-		 * rests on a pair of patches whose area-weighted centroid is its own centre of mass, so
-		 * e = 0 exactly and no joint in this wall carries a moment at all.
-		 */
+		// Two seats centred under the brick, so e = 0 and no moment.
 		const int32 Seats = IntactSeatsUnder(Intact.Structure, Brick);
 
 		TestEqual(
@@ -310,15 +228,9 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * WHAT EACH SPRINGING MUST THEN READ, DERIVED AND NOT COPIED. Half the group's load on one
-	 * 105.0625 cm2 patch, held at the kern edge so peak compression is exactly twice the mean:
-	 *
-	 *     2 * (F / (105.0625 * 10000)) / 10 MPa
-	 *
-	 * The halving is the fixture's own symmetry rather than a modelling claim — the group is four
-	 * near-identical columns with a surviving seat at each end — and the 2% below is slack for the
-	 * wall's mild left-right asymmetry and for nothing else. The SUM is exact and is asserted as
-	 * such; only the division between the two ends is approximate.
+	 * Each springing: half the group's load on a 105.0625 cm2 patch at the kern edge, so peak
+	 * compression is twice the mean: 2 * (F / (105.0625 * 10000)) / 10 MPa. Halving follows the
+	 * fixture's symmetry; the 2% tolerance covers mild asymmetry. The sum is exact.
 	 */
 	const double ExpectedSpringingForceUu = ExpectedSpringingSumUu / 2.0;
 
@@ -337,11 +249,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 		ExpectedSpringingForceUu / BrickWeightUu, *Bits(ExpectedSpringingUtilisation),
 		DesignSpringingUtilisation));
 
-	/*
-	 * ===================================================================================
-	 * PART 2 — THE THREE-CELL CUT.
-	 * ===================================================================================
-	 */
+	// Part 2: the three-cell cut.
 
 	FBrickLayout Cut;
 
@@ -372,7 +280,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 
 	Cut.Structure.SolveLoads();
 
-	// --- the shape the cut leaves, arbitrated against the producer ------------------------
+	// The shape the cut leaves, checked against the producer.
 
 	const int32 LeftSpringingBrick = StaircasePieceAt(
 		Cut.Boxes, LeftSpringingBrickXCm, ArchWallCourseZCm(SpannedCourse));
@@ -390,11 +298,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * THE MIDDLE PAIR HAVE NO SEAT AT ALL, and that is what makes this hole different in kind
-	 * from a one-brick one rather than merely wider. A piece with one seat is a cantilever the
-	 * cap can relieve; a piece with none has fallen back to the head tier and is hanging.
-	 */
+	// The middle pair have no seat at all; this is what differs from a one-brick hole.
 	for (const int32 Hanger : { LeftHangingBrick, RightHangingBrick })
 	{
 		const int32 Seats = IntactSeatsUnder(Cut.Structure, Hanger);
@@ -406,11 +310,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			Seats, 0);
 	}
 
-	/*
-	 * THE TWO HANGERS ARE CONTIGUOUS WITH THE SPRINGINGS THROUGH INTACT HEAD JOINTS, which is
-	 * what a GROUP is made of. Checked rather than assumed, so a bond that quietly stopped
-	 * emitting a head joint fails as a fixture instead of as physics.
-	 */
+	// The four are chained by intact head joints, forming one group.
 	const int32 GroupChain[4] =
 	{
 		LeftSpringingBrick, LeftHangingBrick, RightHangingBrick, RightSpringingBrick
@@ -432,11 +332,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND TRAP 3 IS LIVE, WHICH IS EXACTLY WHY SLICE 1 CANNOT ANSWER THIS FIXTURE. The springing's
-	 * neighbour on the eccentric side is a hanger, and a hanger's only supports are its head
-	 * joints — so the springing appears among them. Slice 1's abutment test refuses the arch on
-	 * precisely that fact, correctly, and slice 2 is what supersedes it by grouping. Asserted here
-	 * so that the reason this test is red is recorded in the test rather than only in the design.
+	 * Trap 3 is live: the springing's eccentric-side neighbour is a hanger resting on it, which
+	 * is why slice 1 refuses the arch and slice 2's grouping is needed.
 	 */
 	{
 		int32 SpringingsTheHangerRestsOn = 0;
@@ -470,18 +367,9 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * ===================================================================================
-	 * PART 3 — THE ROUTING CLAIM: NOTHING IS LEFT UNROUTED.
-	 * ===================================================================================
-	 *
-	 * TODAY THIS IS THE FIRST THING THAT FAILS. The two hangers are each other's support, which
-	 * SolveLoads reports as a knot and strands; the brick in the course above resting only on the
-	 * pair then loses its own path to the ground and reads Falling, and the wedge climbs. A wall
-	 * that spans its hole has every piece it still contains either on the earth or reaching it.
-	 *
-	 * REMOVED PIECES ARE SKIPPED, AND FORGETTING TO WOULD MAKE THIS UNSATISFIABLE. GetPieceSupport
-	 * answers Falling for a piece that has been deleted — deliberately, since nothing is holding up
-	 * something that is not there — so the three bricks the player took would always be counted.
+	 * Part 3: nothing is left unrouted. Without grouping the hangers are stranded as a knot and
+	 * the bricks above read Falling. Removed pieces are skipped, since GetPieceSupport reports
+	 * them as Falling.
 	 */
 	{
 		int32 Stranded = 0;
@@ -542,11 +430,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 				&& Cut.Structure.GetPieceSupport(RightHangingBrick) == EPieceSupport::Supported);
 	}
 
-	/*
-	 * ===================================================================================
-	 * PART 4 — THE TWO SPRINGINGS, WHICH IS WHERE THE GROUP'S LOAD LEAVES.
-	 * ===================================================================================
-	 */
+	// Part 4: the two springings, where the group's load leaves.
 
 	struct FSpringingCase
 	{
@@ -554,7 +438,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 		int32 Brick;
 		double SeatXCm;
 
-		/** Which way it overhangs: +1 is toward increasing X, i.e. into the hole. */
+		/** Overhang direction into the hole: +1 is toward increasing X. */
 		double EccentricSign;
 	};
 
@@ -584,11 +468,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 
 		const FConnection& Bed = Cut.Structure.GetConnection(Springing);
 
-		/*
-		 * THE SPRINGING IS THE SAME HALF SEAT SLICE 1 ALREADY ARCHES — 10.25 x 10.25, loaded
-		 * 5.625 cm off its own centroid, against a kern that reaches 1.7083 cm. Arbitrated against
-		 * the producer rather than assumed, so the number and the reason for it fail together.
-		 */
+		// Slice 1's half seat: 10.25 x 10.25, loaded 5.625 cm off centre against a 1.7083 cm kern.
 		TestTrue(
 			FString::Printf(
 				TEXT("%s: FIXTURE: the surviving seat should be %g cm2 with half-extents (%g, %g); ")
@@ -618,8 +498,6 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 				Case.Description, FMath::Abs(EccentricityCm),
 				KernFromHalfExtentCm(HalfSeatHalfExtentCm)),
 			FMath::Abs(EccentricityCm) > KernFromHalfExtentCm(HalfSeatHalfExtentCm));
-
-		// --- what it reads ------------------------------------------------------------------
 
 		const FVector ForceUu = Cut.Structure.GetConnectionForce(Springing);
 		const FVector MomentUuCm = Cut.Structure.GetConnectionMoment(Springing);
@@ -651,14 +529,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			Published.NormalStressMPa < 0.0);
 
 		/*
-		 * THE THRUST LINE SITS ON THE KERN EDGE, and that is what an arch IS. Written on the
-		 * PUBLISHED moment because ARCHING_DESIGN requires the capped value to be both what
-		 * travels and what the joint reads — a solver that relieved the stress it evaluates while
-		 * handing an unrelieved moment to the course below would be the second, private quantity
-		 * Structure.cpp's own comment exists to forbid, and this is the row that sees it.
-		 *
-		 * SURVIVES SLICE 3: a horizontal thrust is shear on a bed joint and changes neither the
-		 * normal stress nor the moment.
+		 * The published moment sits on the kern edge, so the capped moment is both what travels
+		 * and what the joint reads. Slice 3's thrust is shear and does not change this.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -675,13 +547,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 				Case.Description, *Bits(Published.TensionUtilisation)),
 			Published.TensionUtilisation == 0.0);
 
-		/*
-		 * AND THE READING AGREES WITH BEAM THEORY ON THE FORCE AND MOMENT THE SOLVER REPORTS,
-		 * which is what pins the AXIS as well as the number. ComputeUtilisation returns the worst
-		 * of three, so a fixture aimed at compression would silently measure shear the day shear
-		 * exceeded it — as it will at slice 3. Comparing against the oracle's own worst is the
-		 * form of that claim which survives.
-		 */
+		// Compared with the oracle's worst axis, which survives shear governing at slice 3.
 		TestTrue(
 			FString::Printf(
 				TEXT("%s: it must read what beam theory says, %s, and it reads %s"),
@@ -689,11 +555,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			FMath::Abs(Utilisation - Published.Worst)
 				<= 1.0e-12 * FMath::Max(Published.Worst, 1.0e-12));
 
-		/*
-		 * NOT THE MOMENT SIMPLY ZEROED, which is out by exactly a factor of two on the compression
-		 * axis — |sigma_n| against 2|sigma_n| — and would otherwise look like a plausible small
-		 * number sitting next to a plausible small number.
-		 */
+		// Not the moment zeroed, which would read |sigma_n| instead of 2|sigma_n|.
 		TestTrue(
 			FString::Printf(
 				TEXT("%s: the compression axis must read 2|sigma_n|/f_c = %s, not the %s a deleted ")
@@ -704,7 +566,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 				*Bits(Published.CompressionUtilisation)),
 			FMath::Abs(Published.CompressionUtilisation - Arched) <= 1.0e-12 * Arched);
 
-		/* And against the load the intact wall says has to come through here. */
+		// Against the load the intact wall says must pass here.
 		TestTrue(
 			FString::Printf(
 				TEXT("%s: the group's four columns through two seats put %s on this joint, it ")
@@ -716,12 +578,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * CONSERVATION, AND IT IS THE STRONGEST CLAIM IN THIS FILE because it does not depend on the
-	 * rule slice 2 picks for dividing the group's load. Everything standing on the four bricks
-	 * over the hole has exactly two joints left to reach the ground through, so the two springing
-	 * forces must add up to the four columns the INTACT wall measured — to the last bits, since
-	 * nothing above the spanned course changed and the accumulation up there is the same
-	 * arithmetic in the same order.
+	 * Conservation, independent of how slice 2 divides the load: the two springing forces must sum
+	 * to the intact wall's four columns (same arithmetic above the course, so exact).
 	 */
 	AddInfo(FString::Printf(
 		TEXT("the two springings carry %s uu between them; the intact wall's four columns come to ")
@@ -737,15 +595,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			<= 1.0e-9 * ExpectedSpringingSumUu);
 
 	/*
-	 * ===================================================================================
-	 * PART 5 — AND THE WALL STANDS.
-	 * ===================================================================================
-	 *
-	 * COUNTED BY BREAK PASS AND NOT BY HasGiven. GetBreakPass's contract spells the encoding out:
-	 * a joint that went WITH A REMOVED PIECE has HasGiven true and a pass of INDEX_NONE, because it
-	 * never snapped. The player's own click always takes joints with it, so a HasGiven count could
-	 * never reach zero and would make this unsatisfiable however correct the physics got. What "the
-	 * wall stood" means is that nothing FAILED UNDER LOAD.
+	 * Part 5: the wall stands. Counted by break pass, not HasGiven: joints removed with a piece
+	 * have HasGiven true and pass INDEX_NONE.
 	 */
 	const int32 BreakingPasses = Cut.Structure.SolveAndBreak();
 
@@ -793,24 +644,14 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 		JointsGoneWithTheCut, JointsLostWithTheCut);
 
 	/*
-	 * ===================================================================================
-	 * PART 6 — GATE 1: A GEOMETRY-FREE STRUCTURE ROUTES BIT-IDENTICALLY.
-	 * ===================================================================================
+	 * Part 6, gate 1: a geometry-free structure routes bit-identically.
 	 *
-	 *      [ A ][ B ][ C ][ D ]      four pieces in a row, joined head to head
-	 *      [pad]          [pad]      A and D each have a bed joint to the earth
+	 *      [ A ][ B ][ C ][ D ]      four pieces joined head to head
+	 *      [pad]          [pad]      A and D bedded to the earth
 	 *
-	 * This is the exact topology of a spanned hole — two ends with seats, two middles with none,
-	 * every one of them contiguous through head joints — and NOBODY'S POSITION IS KNOWN. B and C
-	 * therefore fall back to the head tier and become each other's support, which is a two-node
-	 * cycle: SolveLoads strands both and their joints carry exactly nothing.
-	 *
-	 * THAT ANSWER MUST NOT CHANGE, and it is the whole reason gate 1 exists. Both fuzz generators
-	 * emit structures with no geometry — 12,000 and 8,000 cases, and the only property tests over
-	 * routing this project has — so a group rule that fired here would set every one of them
-	 * against an oracle that knows nothing about arches, and they would go dark quietly. The
-	 * assertions are exact rather than approximate because "unreached" and "reached and inert" are
-	 * different claims and only equality tells them apart.
+	 * The spanned-hole topology with no positions. B and C prop each other and stay Stranded,
+	 * carrying nothing. The fuzz generators emit geometry-free structures against an oracle with
+	 * no arches, so grouping must not fire here. Exact equality throughout.
 	 */
 	{
 		FStructure Structure;
@@ -885,12 +726,7 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			Structure.GetPieceSupport(B) == EPieceSupport::Stranded
 				&& Structure.GetPieceSupport(C) == EPieceSupport::Stranded);
 
-		/*
-		 * AND THE LOADS ARE THE SAME BITS. A seat carries its own piece's weight and nothing else,
-		 * because the pair above it conducts nothing; a head joint carries exactly zero. Written
-		 * with == rather than a tolerance: a re-seat that moved any load at all would have to move
-		 * it through one of these five joints.
-		 */
+		// Each seat carries exactly its own brick; head joints carry exactly zero.
 		TestTrue(
 			FString::Printf(
 				TEXT("GATE 1: each seat must carry exactly one brick weight, %s uu; they carry %s ")
@@ -929,25 +765,11 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * ===================================================================================
-	 * PART 7 — GATE 3: INSIDE THE KERN, AGAINST AN ORACLE THE CAP CANNOT MOVE.
-	 * ===================================================================================
-	 *
-	 * A brick sitting 1 cm off a pad it overlaps almost completely loads a 20.5 cm deep patch
-	 * 0.5 cm off centre, against a kern that reaches 3.4167 cm. No part of the face is opening, so
-	 * there is nothing for an arch to relieve — and min(1, |sigma_n|/sigma_b) is 1 here, which
-	 * means a correct implementation is inert by construction.
-	 *
-	 * WHAT THIS ROW CATCHES IS THE VERSION WRITTEN WITHOUT THE MIN, and it can only catch it
-	 * because the expected moment is rebuilt from the fixture's own 0.5 cm lever arm. An oracle
-	 * fed GetConnectionMoment moves WITH the defect — the scale changes the published moment, the
-	 * oracle reads the changed moment, and the two agree on a wrong answer. That is exactly why
-	 * ARCHING_DESIGN records gate 3 as unpunishable by any slice 1 test.
-	 *
-	 * The unconditional scale is |sigma_n|/sigma_b = 6.83 here, which would put sigma_b onto
-	 * |sigma_n| and read 2|sigma_n|/f_c — 2.5387e-4 against the correct 1.4551e-4. Both are tiny,
-	 * both are on the compression axis, and only an independently derived expectation separates
-	 * them.
+	 * Part 7, gate 3: inside the kern. A brick 1 cm off its pad loads a 20.5 cm patch 0.5 cm off
+	 * centre against a 3.4167 cm kern, so min(1, |sigma_n|/sigma_b) = 1 and the arch must not
+	 * fire. The expected moment is rebuilt from the 0.5 cm lever arm, not GetConnectionMoment, so
+	 * the oracle cannot move with a defect. A cap missing its min would read 2.5387e-4 instead of
+	 * 1.4551e-4.
 	 */
 	{
 		FStructure Structure;
@@ -1003,11 +825,8 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 			FMath::Abs(EccentricityCm) < KernFromHalfExtentCm(Joint.InterfaceHalfExtentCm.X));
 
 		/*
-		 * THE MOMENT THE JOINT MUST BE ANSWERING, BUILT HERE. One brick weight — nothing rests on
-		 * this piece — acting through the eccentricity above. The load is off centre along X, so
-		 * the moment is about Y; unlike the wall's square half seat this patch is 20.5 by 10.25,
-		 * so its two in-plane moduli differ by a factor of four and putting it on the wrong axis
-		 * would be visible rather than harmless.
+		 * One brick weight through the eccentricity, about Y. The 20.5 x 10.25 patch's moduli
+		 * differ by 4x, so a wrong axis would show.
 		 */
 		const FVector ExpectedMomentUuCm(
 			0.0, FMath::Abs(ForceUu.Z) * FMath::Abs(EccentricityCm), 0.0);
