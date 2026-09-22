@@ -7,11 +7,9 @@
 #include "Core/ConnectionStrength.h"
 
 /**
- * A joint between two pieces.
- *
- * Holds the interface normal, area, and strength profile, so a caller passes only a
- * force. Plain struct (no UObject/actor/world) to keep the load solver testable without
- * a world; pieces are integer handles resolved by their owner.
+ * A joint between two pieces. Holds the interface normal, area, and strength profile, so a
+ * caller passes only a force. Plain struct (no UObject/world) to keep the load solver
+ * testable; pieces are integer handles resolved by their owner.
  */
 struct FConnection
 {
@@ -22,48 +20,36 @@ struct FConnection
 	int32 PieceB = INDEX_NONE;
 
 	/**
-	 * Normal of the plane where the two pieces meet, pointing toward PieceB. Forces passed
-	 * in must be the forces acting on PieceB (see ConnectionLoad.h); flipping this without
-	 * negating the force swaps compression and tension.
+	 * Normal of the meeting plane, pointing toward PieceB. Forces passed in must act on PieceB
+	 * (see ConnectionLoad.h); flipping this without negating the force swaps compression and tension.
 	 */
 	FVector InterfaceNormal = FVector::ZAxisVector;
 
-	/** Area of the face the two pieces meet across, cm2. */
+	/** Area of the shared face, cm2. */
 	double InterfaceAreaSqCm = 0.0;
 
-	/**
-	 * Where the face sits in the world, cm; on the normal's own axis, the plane of the
-	 * joint. Zero means no geometry was supplied, not a position at the origin. See
-	 * InterfaceHalfExtentCm.
-	 */
+	/** Where the face sits in the world, cm. Zero means no geometry was supplied. */
 	FVector InterfaceCentreCm = FVector::ZeroVector;
 
 	/**
-	 * Half the face's extent on each axis, cm, and zero on the normal's own axis (the face
-	 * is a rectangle, not a box). Zero on all three means no geometry was supplied: no known
-	 * bending capacity, not a degenerate joint, since the area alone answers a centred load
-	 * exactly. AddConnection rejects geometry that disagrees with the area, so an area with
-	 * the wrong lever arm cannot be expressed.
+	 * Half-extents of the face, cm; zero on the normal's axis (a rectangle, not a box). All-zero
+	 * means no geometry supplied, so no bending capacity is known (the area alone answers a centred
+	 * load). AddConnection rejects geometry that disagrees with the area.
 	 */
 	FVector InterfaceHalfExtentCm = FVector::ZeroVector;
 
-	/** Directional strengths of the joint itself (mortar, nail, bolt). */
+	/** Directional strengths of the joint (mortar, nail, bolt). */
 	FConnectionStrength Strength;
 
 	/**
-	 * Evaluate a world-space force against this joint and return its utilisation.
+	 * Evaluate a world-space force and return utilisation. Latches: once utilisation exceeds 1 the
+	 * joint has given and stays given; the discovering call returns the breaking utilisation, later
+	 * calls return zero. Moment and composite depth match UtilisationUnder's parameters so the break
+	 * decision and the strain readout agree: without the moment an eccentric joint at 1.25 never
+	 * breaks, without the depth relief a joint shown at 0.37 breaks at 22.9.
 	 *
-	 * Latches: once utilisation exceeds 1 the joint has given and stays given. The call that
-	 * discovers the failure returns the utilisation that broke it; later calls return zero,
-	 * since a given joint carries nothing.
-	 *
-	 * Moment and composite depth are the same parameters UtilisationUnder takes, defaulted
-	 * the same way, so the break decision and the strain readout stay consistent. Without the
-	 * moment, an eccentric joint at 1.25 capacity would never break; without the
-	 * composite-depth relief, a joint the readout shows at 0.37 would break at 22.9.
-	 *
-	 * @param MomentUuCm       Bending moment about this joint's centroid, uu.cm.
-	 * @param CompositeDepthCm Depth of bonded masonry standing over this joint, cm.
+	 * @param MomentUuCm       Bending moment about the joint centroid, uu.cm.
+	 * @param CompositeDepthCm Depth of bonded masonry over the joint, cm.
 	 */
 	double ApplyForce(
 		const FVector& Force,
@@ -71,32 +57,17 @@ struct FConnection
 		double CompositeDepthCm = 0.0);
 
 	/**
-	 * Utilisation this force would produce, without latching or mutating.
+	 * Utilisation this force would produce, without latching or mutating. Read-only counterpart to
+	 * ApplyForce, used by the strain readout. The moment is a world-space vector the joint resolves
+	 * itself: the caller passes (p - c) x F. Torsion (the component about the normal) is dropped: no
+	 * polar modulus, and second-order for gravity (MOMENTS_DESIGN.md). Composite depth is a length
+	 * paired with the joint's rectangle: masonry over a lost support resists as a deep beam, t*D^2/6,
+	 * and the joint gives at whichever of that and its bed patch is smaller (ARCHING_DESIGN.md slice
+	 * 5). Both trailing params default to zero, which is exact: an unmeasured or centred load gives
+	 * the pre-moments answer.
 	 *
-	 * Read-only counterpart to ApplyForce, used by the strain readout each frame. Ignores the
-	 * latch, so a given joint still reports what a fresh joint of the same geometry would;
-	 * latching lives only in ApplyForce. A caller that needs the joint's live state calls
-	 * HasGiven.
-	 *
-	 * The moment is a world-space vector the joint resolves itself, like the force: the caller
-	 * passes (p - c) x F about this centroid and nothing more. Torsion (the component about the
-	 * normal) is dropped: it needs a polar modulus this face lacks and is second-order for
-	 * gravity on a rectangular joint (MOMENTS_DESIGN.md).
-	 *
-	 * Composite depth is a length the joint pairs with its own rectangle. Masonry standing over
-	 * a lost support resists overturning as a deep beam, t*D^2/6, and the joint gives at
-	 * whichever of that and its own bed patch is smaller. The depth is a graph fact only the
-	 * caller knows; which extent is t is an interface fact only the joint knows. See
-	 * ComputeUtilisation for why the relief is a min with no axial term, and ARCHING_DESIGN.md
-	 * slice 5.
-	 *
-	 * Both trailing parameters default to zero, which is exact, not a tolerance: an unmeasured
-	 * or centred load gives the same answer as before moments existed, the way zero friction
-	 * reduces Mohr-Coulomb exactly.
-	 *
-	 * @param MomentUuCm       Bending moment about this joint's centroid, uu.cm.
-	 * @param CompositeDepthCm Vertical depth of bonded masonry over this joint, cm. Zero,
-	 *                         negative, and non-finite all mean no relief.
+	 * @param MomentUuCm       Bending moment about the joint centroid, uu.cm.
+	 * @param CompositeDepthCm Depth of bonded masonry over the joint, cm. Zero/negative/non-finite mean no relief.
 	 */
 	double UtilisationUnder(
 		const FVector& Force,
@@ -104,44 +75,29 @@ struct FConnection
 		double CompositeDepthCm = 0.0) const;
 
 	/**
-	 * Fraction of a moment this joint may keep before its thrust line leaves the kern:
-	 * k = min(1, |sigma_n| / sigma_b), and exactly 1 when there is nothing to relieve.
+	 * Moment fraction the joint keeps before its thrust line leaves the kern: k = min(1, |sigma_n| /
+	 * sigma_b), and 1 when there is nothing to relieve. Models arching: a brick that lost one seat
+	 * but abuts a grounded neighbour arches across the hole, thrust line at the kern edge, giving
+	 * peak tension 0 and peak compression 2|sigma_n|. Decides only what one joint sees (compressive
+	 * normal force, resultant outside the kern); whether the joint is a springing is SolveLoads'
+	 * call, and applying this without that check wrongly caps head joints and corbels. Returns 1.0
+	 * where it does not apply. No conversion boundary: the result is a stress ratio. Degenerate input
+	 * fails closed to no relief.
 	 *
-	 * This is the arching rule, and only half of it. A brick that has lost one seat but still
-	 * abuts a neighbour reaching the ground arches across the hole rather than cantilevering:
-	 * the abutment supplies a horizontal thrust and the thrust line sits at the kern edge.
-	 * Scaled by k the joint reads peak tension of exactly zero and peak compression of exactly
-	 * 2|sigma_n|, twice what deleting the moment would give. See ARCHING_DESIGN.md.
-	 *
-	 * This call only decides what one joint can see: that the normal force is compressive and
-	 * the resultant is outside the kern. Whether the joint is a springing at all is a graph
-	 * fact SolveLoads supplies; applying this without it caps head joints and corbels too,
-	 * deleting MOMENTS_DESIGN case (b).
-	 *
-	 * Returns 1.0 exactly where it does not apply, so a structure with no arch is unchanged. No
-	 * conversion boundary is crossed: the result is a ratio of two uu/cm2 stresses, so the
-	 * megapascals cancel. Degenerate input fails closed to no relief: a joint that cannot locate
-	 * its kern keeps its whole moment and reads as heavily loaded.
-	 *
-	 * @param Force      The force this joint carries, oriented as ClassifyForce requires: the
-	 *                   force acting on the piece the normal points toward.
-	 * @param MomentUuCm Bending moment about this joint's centroid, uu.cm. Only each in-plane
-	 *                   component's magnitude is read, so either end gives the same answer.
-	 * @return k in (0, 1], and 1 exactly when no relief is available or warranted.
+	 * @param Force      Force on the joint, oriented as ClassifyForce requires (acting on the piece the normal points to).
+	 * @param MomentUuCm Bending moment about the joint centroid, uu.cm; only in-plane magnitudes are read.
+	 * @return k in (0, 1], and 1 when no relief is warranted.
 	 */
 	double ArchingMomentScale(const FVector& Force, const FVector& MomentUuCm) const;
 
 	/**
-	 * Take this joint out of the structure without it having failed.
-	 *
-	 * A removed piece's joint did not break, but it is just as absent, so it answers HasGiven
-	 * the same way: out of the tier decision, out of the load paths, carrying nothing. It
-	 * records no reason; FStructure keeps that by leaving the break-pass stamp alone. Idempotent
-	 * and monotonic: joints never heal.
+	 * Take the joint out of the structure without failing it (its piece was removed). Answers
+	 * HasGiven like a broken joint: out of the load paths, carrying nothing. Idempotent; joints
+	 * never heal.
 	 */
 	void Sever();
 
-	/** Whether this joint has given. Never returns to false. */
+	/** Whether the joint has given. Never returns to false. */
 	bool HasGiven() const;
 
 private:
