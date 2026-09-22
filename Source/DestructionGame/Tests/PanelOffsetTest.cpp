@@ -9,49 +9,27 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for the same
- * reason.
+ * Uniquely named namespace, not anonymous: a unity build merges translation units. The
+ * `using namespace` lives inside RunTest for the same reason.
  */
 namespace PanelOffsetTestSupport
 {
 	/**
-	 * AN ORDINARY VIEWPORT AND THE PANEL THE GAME ACTUALLY DRAWS, BOTH TRANSCRIBED RATHER THAN
-	 * IMPORTED.
-	 *
-	 * PieceMenuPanelWidthPx and PieceMenuPanelHeightPx are file-static in
-	 * DestructionGamePlayerController.cpp and a test may not reach them — which is the right way
-	 * round. A test that took the panel's size from the code that draws it would agree with that
-	 * code whatever it said, including a size that no longer fits; these are the numbers the
-	 * panel is 640 x 560 px today, written down so that the arithmetic below is arithmetic a
-	 * human can check against a 1920 x 1080 screen.
-	 *
-	 * NOTHING BELOW DEPENDS ON THESE BEING THE SHIPPED FIGURES. Every expectation is derived from
-	 * them in the case table, so a retuned panel moves the expectations with it.
+	 * A 1920 x 1080 viewport and today's 640 x 560 panel, transcribed rather than imported so the
+	 * arithmetic is checkable by hand. Expectations are derived from these, not tied to them.
 	 */
 	constexpr double PanelViewportWidthPx = 1920.0;
 	constexpr double PanelViewportHeightPx = 1080.0;
 	constexpr double PanelWidthPx = 640.0;
 	constexpr double PanelHeightPx = 560.0;
 
-	/**
-	 * The largest top-left corner that still leaves the whole panel on screen: 1280 x 520 px.
-	 *
-	 * SPELLED OUT AS A SUBTRACTION RATHER THAN AS 1280, so the two numbers a reader has to hold
-	 * are the panel and the screen. It is also the boundary every interesting row of the table
-	 * below sits exactly on, one pixel inside, or one pixel outside.
-	 */
+	/** Largest top-left corner that keeps the whole panel on screen: 1280 x 520 px. */
 	constexpr double PanelMaxOffsetXPx = PanelViewportWidthPx - PanelWidthPx;
 	constexpr double PanelMaxOffsetYPx = PanelViewportHeightPx - PanelHeightPx;
 
 	/**
-	 * A PANEL WIDER THAN THE SCREEN IT IS ON, WHICH IS THE ROW THE WHOLE FILE IS FOR.
-	 *
-	 * 2000 px against a 1920 px viewport makes the permitted range -80 px, and a range whose top
-	 * is below its bottom is where FMath::Clamp stops meaning what it reads as. It is not a silly
-	 * input either: a 640 px panel on a 640 px-wide window is the same arithmetic, and so is any
-	 * DPI scale that outruns the viewport.
+	 * A panel larger than the screen: 2000 px on 1920 px gives a range of -80 px, where a naive
+	 * clamp misbehaves. Small windows and high DPI scales reach the same arithmetic.
 	 */
 	constexpr double PanelOversizeWidthPx = 2000.0;
 	constexpr double PanelOversizeHeightPx = 1200.0;
@@ -86,27 +64,12 @@ namespace PanelOffsetTestSupport
 		FVector2D ExpectedOffsetPx;
 	};
 
-	/**
-	 * HOW FAR IN FROM THE VIEWPORT'S RIGHT EDGE THE PANEL OPENS, AND IT IS THE OLD FIGURE.
-	 *
-	 * The panel used to be an SBox at HAlign_Right / VAlign_Center with a 24 px margin, and that
-	 * placement was argued on the record rather than defaulted into: a readout pinned against the
-	 * right edge is off the wall the player is pointing at. PieceMenuPanelMarginPx was deleted along
-	 * with the alignment when the panel became draggable, and this is the same 24 px coming back —
-	 * as an ARGUMENT rather than as a constant beside the Slate, because that is the whole point of
-	 * asking the presenter where the panel opens.
-	 */
+	/** Gap between the panel and the viewport's right edge, the old right-aligned 24 px margin. */
 	constexpr double PanelHomeMarginPx = 24.0;
 
 	/**
-	 * A PANEL SMALLER THAN THE ONE THE GAME DRAWS TODAY, WHICH IS THE ROW THAT TIES THIS TO COMPACT
-	 * MODE.
-	 *
-	 * PieceMenuPanelSizePx is about to answer a different size per detail mode, so the home has to
-	 * be a function of the panel it is placing rather than a corner written down once — otherwise
-	 * the compact panel opens at the full panel's corner and stands 192 px short of the right edge
-	 * it was supposed to be tucked against. These are NOT a claim about what compact measures; they
-	 * are simply a different size, chosen so the arithmetic changes on both axes.
+	 * A smaller panel, so the home must depend on panel size (compact mode). Not compact's real
+	 * size; just different on both axes.
 	 */
 	constexpr double SmallPanelWidthPx = 448.0;
 	constexpr double SmallPanelHeightPx = 392.0;
@@ -121,53 +84,22 @@ namespace PanelOffsetTestSupport
 		FVector2D ExpectedOffsetPx;
 
 		/**
-		 * Whether this row is a screen the argued home actually FITS on.
-		 *
-		 * The rows where it does are held to the shape of the decision as well as to their own
-		 * expected numbers — right of the screen's middle, and centred down it — so a mistyped
-		 * expectation is still caught. The rows where it does not are the fail-closed ones, and the
-		 * only thing they promise is a corner that is on screen at all.
+		 * Whether the intended home fits on this screen. Such rows are also checked for being right
+		 * of centre and vertically centred; the rest only promise an on-screen corner.
 		 */
 		bool bTheArguedHomeFits;
 	};
 }
 
 /**
- * A PANEL THE PLAYER HAS DRAGGED KEEPS THE OFFSET THEY CHOSE, EXCEPT WHERE THAT WOULD PUT ANY
- * PART OF IT OFF THE SCREEN — AND A PANEL TOO BIG FOR THE SCREEN PINS ITS TOP-LEFT CORNER TO THE
- * TOP-LEFT OF THE VIEWPORT RATHER THAN TO A NEGATIVE NUMBER.
+ * A dragged panel keeps its offset unless part of it would leave the screen; a panel larger
+ * than the screen pins its top-left corner to the viewport origin, never a negative offset.
+ * An off-screen title bar would leave the player unable to grab the panel again.
  *
- * WHY THIS IS THE TESTABLE HALF. The player's complaint is "I can't move the menu if it is in my
- * way": the panel is pinned by an SConstraintCanvas with a fixed alignment and there is no way to
- * reposition it. Making it draggable is two parts — Slate reporting a drag, and deciding what
- * offset that drag means — and only the second one can be wrong in a way nobody notices. It is
- * also the only part that can strand the panel: an offset that puts the title bar off the top of
- * the screen leaves the player with no way to grab it again, and no way to get the panel back
- * short of restarting.
- *
- * THE ASSERTION IS THE CLAMPED OFFSET, EXACTLY, RATHER THAN "IT IS ON SCREEN SOMEWHERE". A
- * containment predicate is satisfied by a function that ignores its input and returns the origin,
- * which is the stub this test is red against — so containment alone would go green on a panel
- * that snapped back to the corner on every drag. Each row states the corner it must come back
- * with, and the containment invariant is swept over every row on top of that.
- *
- * THE OVERSIZED ROWS COME IN PAIRS, ONE DRAGGED EACH WAY, BECAUSE THE SPELLINGS THAT GET IT WRONG
- * GET IT WRONG DIFFERENTLY. With the permitted range at -80 px, Min(Max(X, 0), Range) hands back
- * -80 whichever way the panel was dragged, while a hand-written `X > Range ? Range : (X < 0 ? 0 :
- * X)` hands back -80 for a drag right and 0 for a drag left — so a single row would be passed by
- * one of the two. UE's own FMath::Clamp is Max(Min(X, Range), 0) and gets both right, which is
- * luck rather than a guarantee: measured against the naive Clamp these four rows are green, and
- * they are here so that the next spelling of the same line cannot quietly be the other one.
- *
- * THE DEGENERATE ROWS ARE WHERE THE NAIVE CLAMP ACTUALLY BREAKS, AND IT BREAKS EIGHT WAYS. NaN
- * does not survive Max and Min as a fault — Max discards it and Min replaces it — so a drag whose
- * X is not a number comes back as 1280.00 px, an infinite one as the far corner, and a viewport
- * of negative height as an ordinary offset a hundred pixels in. Every one of those is a
- * plausible-looking number standing in for "we do not know where the screen is". Each row also
- * asserts the result is finite separately from its value, so a NaN coming out is reported as a
- * NaN rather than as a mismatched number.
- *
- * NEEDS A TICKING WORLD: no, and not even a world. Six doubles in, two out.
+ * Each row asserts the exact clamped corner, since containment alone passes a stub returning
+ * the origin. Oversized rows come in pairs, dragged each way, because different clamp spellings
+ * fail on different sides of an inverted range. Degenerate rows (NaN, infinity, negative sizes)
+ * fail closed to the origin; a naive clamp turns them into plausible numbers. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPanelOffsetClampTest,
@@ -182,7 +114,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 	const FVector2D Panel(PanelWidthPx, PanelHeightPx);
 	const FVector2D Origin(0.0, 0.0);
 
-	/* The far corner the panel may be dragged to and still be wholly on screen. */
+	// Furthest corner that keeps the panel wholly on screen.
 	const FVector2D FarCorner(PanelMaxOffsetXPx, PanelMaxOffsetYPx);
 
 	const TArray<FPanelOffsetCase> Cases = {
@@ -197,11 +129,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 			Origin
 		},
 		{
-			/*
-			 * EXACTLY ON THE BOUNDARY, WHICH MUST BE INSIDE IT. The panel's right edge lands on the
-			 * viewport's right edge and not a pixel past, so a guard written with > where >= was
-			 * meant would take a pixel off the range and nobody would ever see it.
-			 */
+			// Exactly on the boundary, which is inside; catches > written for >=.
 			TEXT("the far corner, where the panel's edges meet the screen's"),
 			FarCorner, Panel, Screen,
 			FarCorner
@@ -212,12 +140,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 			FarCorner
 		},
 		{
-			/*
-			 * ONE AXIS AT A TIME, BOTH WAYS ROUND. A clamp that folded the two axes together —
-			 * pulling the whole offset back when either edge overran — would pass a test that only
-			 * ever pushed both at once, and it would make the panel jump vertically while the
-			 * player dragged it along the bottom of the screen.
-			 */
+			// One axis at a time, so a clamp that couples the axes fails.
 			TEXT("dragged off the right edge only, keeping its height"),
 			FVector2D(1900.0, 200.0), Panel, Screen,
 			FVector2D(PanelMaxOffsetXPx, 200.0)
@@ -244,11 +167,8 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * THE INVERTED-RANGE PAIR, DRAGGED RIGHT. Viewport 1920 minus panel 2000 is -80, and
-			 * a clamp nested the other way round hands back -80 — the panel's heading off the left
-			 * edge of the screen, which is the one corner that must stay reachable. Y is an
-			 * ordinary in-range drag on the same call, so an implementation that gave up on the
-			 * whole vector when one axis was impossible is caught here too.
+			 * Inverted range (1920 - 2000 = -80), dragged right. Y is in range, so giving up on the
+			 * whole vector also fails.
 			 */
 			TEXT("a panel wider than the screen, dragged right, pins its left edge"),
 			FVector2D(300.0, 100.0),
@@ -256,7 +176,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 			FVector2D(0.0, 100.0)
 		},
 		{
-			/* And the same panel dragged the other way, which the naive clamp gets RIGHT. */
+			// The same panel dragged left.
 			TEXT("a panel wider than the screen, dragged left, pins its left edge too"),
 			FVector2D(-300.0, 100.0),
 			FVector2D(PanelOversizeWidthPx, PanelHeightPx), Screen,
@@ -275,7 +195,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 			FVector2D(100.0, 0.0)
 		},
 		{
-			/* Exactly the viewport is a zero-wide range, which is the boundary of the inversion. */
+			// A zero-wide range, the boundary of inversion.
 			TEXT("a panel exactly the size of the screen has nowhere to go"),
 			FVector2D(10.0, 10.0), Screen, Screen,
 			Origin
@@ -316,12 +236,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 			Origin
 		},
 		{
-			/*
-			 * A NEGATIVE SIZE IS NOT A SMALL PANEL. Subtracting one WIDENS the permitted range, so
-			 * a viewport of -1920 px would let the corner be dragged further out than a real screen
-			 * ever allows — the fail-OPEN direction, reached by arithmetic that looks perfectly
-			 * reasonable on the line it is written.
-			 */
+			// A negative size widens the permitted range (fail-open), so it is refused.
 			TEXT("a panel of negative width"),
 			FVector2D(100.0, 200.0), FVector2D(-PanelWidthPx, PanelHeightPx), Screen,
 			Origin
@@ -338,11 +253,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 		const FVector2D Clamped =
 			ClampPanelOffset(Case.DesiredOffsetPx, Case.PanelSizePx, Case.ViewportSizePx);
 
-		/*
-		 * FINITE FIRST, AND SEPARATELY FROM THE VALUE. A NaN compares false against everything
-		 * including itself, so an equality check alone would report "expected (0,0), got (nan,nan)"
-		 * as an ordinary wrong number — this says which of the two faults it is.
-		 */
+		// Finiteness checked separately, so a NaN is reported as NaN rather than a wrong number.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: the clamped offset must be finite, it is %s"),
@@ -360,11 +271,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 				*DescribeOffset(Clamped)),
 			Clamped, Case.ExpectedOffsetPx);
 
-		/*
-		 * AND THE INVARIANT THE WHOLE FUNCTION EXISTS FOR, SWEPT OVER EVERY ROW RATHER THAN
-		 * WRITTEN PER CASE: the corner the player has to be able to grab is never off the screen,
-		 * in either direction. A row whose expectation was mistyped would still be held to this.
-		 */
+		// Swept invariant: the grabbable corner is always on screen.
 		if (OffsetIsFinite(Clamped))
 		{
 			const double ScreenWidthPx = FMath::Max(Case.ViewportSizePx.X, 0.0);
@@ -379,13 +286,7 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * AND CLAMPING IS IDEMPOTENT, WHICH IS WHAT MAKES A DRAG SURVIVE A SECOND FRAME. The offset
-	 * this returns is stored and fed back in on the next drag, on the next resize and on every
-	 * rebuild of the panel; a clamp that moved its own output would walk the panel across the
-	 * screen a little further every frame it was asked. Swept over the same rows rather than
-	 * written as its own case, because the rows that would show it are the clamped ones.
-	 */
+	// Clamping is idempotent; the output is fed back every frame, so drift would walk the panel.
 	for (const FPanelOffsetCase& Case : Cases)
 	{
 		const FVector2D Once =
@@ -404,46 +305,14 @@ bool FPanelOffsetClampTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE PANEL OPENS RIGHT-OF-CENTRE AND VERTICALLY CENTRED — AND ON A SCREEN TOO SMALL TO PUT IT
- * THERE IT OPENS AT A CORNER THAT IS STILL ON SCREEN, NEVER AT A NEGATIVE ONE.
+ * The panel opens right of centre and vertically centred, 24 px in from the right edge; on a
+ * screen too small for that it opens at an on-screen corner, never a negative one. Regression:
+ * making the panel draggable replaced right-alignment with an offset, which fell back to the
+ * top-left. The home depends on panel size, since compact mode changes it.
  *
- * THIS IS A SELF-REPORTED REGRESSION AND THE CAUSE IS HONEST. The old placement was an SBox at
- * HAlign_Right / VAlign_Center with a 24 px margin, argued on the record as keeping the readout off
- * the wall the player is pointing at. Making the panel draggable replaced that alignment with an
- * OFFSET, and every corner except the origin is a function of the viewport's size — which nothing
- * knows until something has been laid out. So the arithmetic that used to run inside Slate's layout
- * now has to run before it, and the panel fell back to the one corner that needs no arithmetic at
- * all: the top-left. That is a corner nobody chose, over the part of the screen a player is most
- * likely to be looking at.
- *
- * WHY IT IS A FUNCTION HERE RATHER THAN TWO LINES AT THE CALL SITE. It is the same argument
- * ClampPanelOffset is here for, one step earlier: the numbers are viewport pixels, the failure is a
- * panel that opens somewhere unusable, and a widget cannot be asked whether it got them right. It
- * is also about to become a function of something that MOVES — PieceMenuPanelSizePx answers a
- * different size per detail mode, so the corner a compact panel opens at is not the corner a full
- * one does, and a home written as a constant would tuck one of the two against nothing.
- *
- * THE ASSERTION IS THE EXACT CORNER, PLUS THE SHAPE OF THE DECISION SWEPT OVER EVERY ROW THAT CAN
- * HOLD IT. "Somewhere on screen" is satisfied by the origin, which is the regression; "1256, 260"
- * alone is satisfied by a function that ignores its arguments on every other screen. So each row
- * states its corner, and the rows where the argued home fits are additionally held to being right
- * of the screen's own middle and centred down it — which is what a mistyped expectation would
- * still fail.
- *
- * AND IT COMPOSES WITH THE CLAMP RATHER THAN RESTATING IT, WHICH IS SWEPT OVER EVERY ROW. The home
- * is fed into the same field a drag writes to, and that field is only ever the output of
- * ClampPanelOffset — so a home the clamp would MOVE is a panel that jumps the first time it is
- * picked up. Clamping the home must therefore change nothing, on every row including the degenerate
- * ones.
- *
- * THE DEGENERATE ROWS ARE THE CLAMP'S EIGHT AGAIN, PLUS THE ONE THIS FUNCTION ADDS. A margin is a
- * distance, so a NaN margin is a distance that is not a number and a NEGATIVE margin is a distance
- * that pushes the panel off the edge it was measured from — neither is a smaller margin, and
- * neither survives FMath::Max, which discards a NaN, or FMath::Min, which replaces it. Every one of
- * those comes back as a perfectly plausible corner unless it is refused, which is the whole reason
- * they are rows.
- *
- * NEEDS A TICKING WORLD: no, and not even a world. Five doubles in, two out.
+ * Each row asserts the exact corner; rows where the home fits are also checked for being right
+ * of centre and centred. Clamping the home must change nothing, or the panel jumps when first
+ * dragged. Degenerate rows add NaN, infinite and negative margins, all refused. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPanelHomeOffsetTest,
@@ -459,12 +328,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 	const FVector2D SmallPanel(SmallPanelWidthPx, SmallPanelHeightPx);
 	const FVector2D Origin(0.0, 0.0);
 
-	/*
-	 * THE ARGUED HOME ON AN ORDINARY SCREEN, SPELLED AS THE SUBTRACTION RATHER THAN AS 1256 AND 260.
-	 * The panel's right edge stands 24 px in from the viewport's, and its height is centred: the two
-	 * numbers a reader has to hold are the panel and the screen, exactly as they are for the clamp's
-	 * far corner above.
-	 */
+	// Intended home on an ordinary screen: (1256, 260).
 	const FVector2D ArguedHome(
 		PanelViewportWidthPx - PanelWidthPx - PanelHomeMarginPx,
 		(PanelViewportHeightPx - PanelHeightPx) * 0.5);
@@ -480,33 +344,21 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 			ArguedHome, true
 		},
 		{
-			/*
-			 * A SMALLER PANEL TUCKS FURTHER RIGHT AND STAYS CENTRED, WHICH IS THE ROW THAT SAYS THIS
-			 * IS A FUNCTION OF THE PANEL. A home written down as a corner passes the row above and
-			 * fails this one, leaving a compact panel floating 192 px short of the edge it is
-			 * supposed to be against.
-			 */
+			// A smaller panel tucks further right; a hard-coded corner fails here.
 			TEXT("a smaller panel, as a compact mode will ask for"),
 			SmallPanel, Screen, PanelHomeMarginPx,
 			SmallPanelHome, true
 		},
 		{
-			/*
-			 * NO MARGIN IS THE FAR CORNER EXACTLY, WHICH IS THE BOUNDARY THE CLAMP ALREADY CALLS
-			 * INSIDE ITSELF. The panel's right edge lands on the viewport's and not a pixel past, so
-			 * a home written with a > where a >= was meant would lose a pixel here and nowhere else.
-			 */
+			// Zero margin lands exactly on the clamp's far corner; catches > written for >=.
 			TEXT("no margin at all puts the panel flush against the right edge"),
 			Panel, Screen, 0.0,
 			FVector2D(PanelMaxOffsetXPx, (PanelViewportHeightPx - PanelHeightPx) * 0.5), false
 		},
 		{
 			/*
-			 * A MARGIN WIDER THAN THE ROOM LEFT OVER, WHICH IS THE INVERTED-RANGE CASE ARRIVING BY A
-			 * DIFFERENT ROUTE FROM THE CLAMP'S. 1920 - 640 - 2000 is -720: a plausible-looking
-			 * number that puts the panel's heading off the left of the screen. The vertical axis is
-			 * an ordinary centred one on the same call, so an implementation that gave up on the
-			 * whole vector when one axis was impossible is caught here too.
+			 * An oversized margin inverts the range (1920 - 640 - 2000 = -720). Y is ordinary, so
+			 * giving up on the whole vector also fails.
 			 */
 			TEXT("a margin wider than the screen has room for pins the left edge"),
 			Panel, Screen, 2000.0,
@@ -528,7 +380,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 			Origin, false
 		},
 		{
-			/* A window smaller than the panel on BOTH axes, which is the one that must not go negative. */
+			// Smaller than the panel on both axes; must not go negative.
 			TEXT("a viewport too small for the panel in both directions"),
 			Panel, FVector2D(320.0, 240.0), PanelHomeMarginPx,
 			Origin, false
@@ -579,7 +431,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 			Origin, false
 		},
 		{
-			/* A negative size WIDENS the room the subtraction thinks it has: the fail-OPEN direction. */
+			// A negative size widens the range (fail-open).
 			TEXT("a panel of negative width"),
 			FVector2D(-PanelWidthPx, PanelHeightPx), Screen, PanelHomeMarginPx,
 			Origin, false
@@ -591,11 +443,8 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A NEGATIVE MARGIN IS NOT A SMALLER MARGIN. It is a distance that pushes the panel PAST
-			 * the edge it was measured from — 1920 - 640 + 24 is 1304, twenty-four pixels of panel
-			 * hanging off the right of the screen — and the clamp would then quietly pull it back to
-			 * 1280, so the fault would be invisible rather than absent. It arrives from exactly the
-			 * arithmetic a negative viewport does, and it is refused for the same reason.
+			 * A negative margin pushes the panel past the edge (1304 px), which the clamp would then
+			 * silently hide. Refused.
 			 */
 			TEXT("a negative margin"),
 			Panel, Screen, -PanelHomeMarginPx,
@@ -608,11 +457,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 		const FVector2D Home =
 			PieceMenuHomeOffset(Case.PanelSizePx, Case.ViewportSizePx, Case.MarginPx);
 
-		/*
-		 * FINITE FIRST, AND SEPARATELY FROM THE VALUE, for the reason the clamp's rows give: a NaN
-		 * compares false against everything including itself, so an equality alone reports the fault
-		 * as an ordinary wrong number.
-		 */
+		// Finiteness checked separately, as for the clamp.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: the home offset must be finite, it is %s"),
@@ -630,11 +475,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 				*DescribeOffset(Home)),
 			Home, Case.ExpectedOffsetPx);
 
-		/*
-		 * THE CORNER THE PLAYER HAS TO BE ABLE TO GRAB IS ON SCREEN, SWEPT OVER EVERY ROW RATHER
-		 * THAN WRITTEN PER CASE — the same invariant the clamp's rows carry, and the one a mistyped
-		 * expectation would still be held to.
-		 */
+		// Swept invariant: the grabbable corner is on screen.
 		if (OffsetIsFinite(Home))
 		{
 			const double ScreenWidthPx = FMath::Max(Case.ViewportSizePx.X, 0.0);
@@ -648,12 +489,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 					&& Home.X <= ScreenWidthPx && Home.Y <= ScreenHeightPx);
 		}
 
-		/*
-		 * AND THE CLAMP LEAVES IT ALONE. The home is written into the same field a drag writes to,
-		 * and that field is only ever ClampPanelOffset's output — so a home the clamp would move is
-		 * a panel that jumps the first time it is picked up, which is the join rather than either
-		 * function.
-		 */
+		// The clamp must leave the home unchanged, or the panel jumps when first dragged.
 		const FVector2D Clamped = ClampPanelOffset(Home, Case.PanelSizePx, Case.ViewportSizePx);
 
 		TestEqual(
@@ -662,12 +498,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 				Case.Description, *DescribeOffset(Home), *DescribeOffset(Clamped)),
 			Clamped, Home);
 
-		/*
-		 * AND ON THE SCREENS WHERE THE ARGUED HOME FITS, IT IS THE ARGUED HOME: right of the
-		 * screen's own middle, and centred down it. This is the decision rather than the number —
-		 * a right-anchored placement is what keeps the readout off the wall the player is pointing
-		 * at, and it is the property that was lost.
-		 */
+		// Where the home fits: right of centre (off the wall being aimed at) and vertically centred.
 		if (!Case.bTheArguedHomeFits)
 		{
 			continue;
@@ -688,7 +519,7 @@ bool FPanelHomeOffsetTest::RunTest(const FString& Parameters)
 				Case.Description, Home.Y, MiddleYPx),
 			FMath::IsNearlyEqual(Home.Y, MiddleYPx, 0.5));
 
-		/* And the whole panel is on screen, which is what "tucked against the edge" has to mean. */
+		// The whole panel is on screen.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: the whole panel must be on screen: it spans x %.2f..%.2f, y %.2f..%.2f in a %s viewport"),

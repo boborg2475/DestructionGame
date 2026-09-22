@@ -15,48 +15,17 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SHED AS A PLAYABLE SCENARIO — SHED_PATH.md Phase F, slice F2, the point where the shed the F1
- * builder lays stops being reachable only from a unit test and becomes a LEVEL a human can join,
- * watch hold, and watch fall.
+ * The shed as a playable scenario (SHED_PATH.md Phase F, slice F2). The catalogue's `shed` row
+ * maps to `Lvl_Shed` and lays the seven-piece shed (two ClayBrick piers, Timber roof, overhang and
+ * post) through DestructionScenarios::Build. It stands under the rigid-block LP; its cut pulls the
+ * post, after which the overhang loses the earth and the piers keep it.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. The catalogue carries a `shed` row whose MapName is `Lvl_Shed`
- * and whose LayStructure is the F1 shed builder, so that DestructionScenarios::Build lays the
- * seven-piece multi-material shed — two ClayBrick piers, a Timber roof and overhang, a Timber post
- * — which STANDS under the rigid-block LP, and whose named cut PULLS THE POST so that, once
- * applied, the overhang loses the earth (the LP mechanism names it) while the two piers keep it.
+ * The F1 test covers the builder directly; this covers the catalogue path, including that
+ * per-piece materials survive Build. The row needs its own map: IndexOfMapName returns the first
+ * row for a map name, so sharing Lvl_Sandbox would make it unreachable by map and collide in the
+ * content guards. Make maps with New-ScenarioMap.ps1, never a file copy.
  *
- * =====================================================================================
- * WHY THIS IS THE CATALOGUE PATH, NOT A SECOND COPY OF THE F1 BUILDER TEST
- * =====================================================================================
- *
- * `Acceptance.Shed.BuildsAMultiMaterialShedThatStandsAndCollapsesCorrectly` (F1) proves the BUILDER
- * — DestructionShed::Build called directly. This test proves the SCENARIO: that a catalogue row
- * exists, names the shed builder as its LayStructure, that DestructionScenarios::Build routes
- * through that lambda, and — the F0/AdoptLayout promise — that the per-piece MATERIALS the builder
- * authored survive the Build path into Layout.Structure so the cross-material physics is still
- * there when the level is laid. F1 is the builder; this is the level. The shed stands and the post
- * fells the overhang exactly as F1's arm 0 and arm 2 do, but reached the way a human reaches it.
- *
- * THE RED IS THE MISSING ROW. The `shed` row is not in the catalogue yet, so IndexOfName answers
- * INDEX_NONE and this test stops at the first assertion with a clear message — not a type error, a
- * compile stub, or a wrong-axis reading. dev-expert's green step is one catalogue row (a MapName, a
- * LayStructure calling DestructionShed::Build{}, and a one-piece cut list naming the post) plus the
- * duplicated `Lvl_Shed.umap` that Content.ScenarioMapsExist and Content.ScenarioMapsAreDistinctAssets
- * will then require — the map is a content step, made with New-ScenarioMap.ps1, never a file copy.
- *
- * WHY THE ROW NEEDS ITS OWN MAP AND CANNOT RIDE `Lvl_Sandbox`. A scenario is selected back from its
- * map by IndexOfMapName, which returns the FIRST row spelling that map name — `sandbox`, row 0. So a
- * shed row with MapName `Lvl_Sandbox` would be selectable only by `?Scenario=shed`, never by opening
- * a level, and it would collide with `sandbox` in both the ScenarioMapsExist distinctness sweep and
- * the ScenarioMapsAreDistinctAssets PrimaryAssetId sweep. A distinct `Lvl_Shed` is mandatory; this
- * test pins the row's MapName to it so the two content guards then bite on the absent .umap.
- *
- * NEEDS A TICKING WORLD: NO. The catalogue is world-free, Build is arithmetic over boxes and a
- * graph, the oracle and SolveAndBreak are pure — every assertion is on mechanism (material identity,
- * feasibility, the mechanism's moving blocks, Supported-vs-Falling, Stranded == 0), never on
- * displacement. Same footing as CorbelScenarioTest and the F1 builder test.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Assertions are on mechanism, never displacement. No world needed. Named namespace for unity builds.
  */
 namespace ShedScenarioTestSupport
 {
@@ -66,10 +35,10 @@ namespace ShedScenarioTestSupport
 	/** What `?Scenario=` names on a URL, and what IndexOfName looks up. */
 	const TCHAR* const ShedScenarioName = TEXT("shed");
 
-	/** The distinct map the row must select and be selected by. A content step for dev, not this test. */
+	/** The row's own map. */
 	const TCHAR* const ShedScenarioMapName = TEXT("Lvl_Shed");
 
-	/** The seven pieces of the laid shed, named by material, grounding and relative X — never by handle. */
+	/** The seven shed pieces, identified by material, grounding and X order, never by handle. */
 	struct FShed
 	{
 		int32 BackBase = INDEX_NONE;
@@ -90,9 +59,8 @@ namespace ShedScenarioTestSupport
 	}
 
 	/**
-	 * Name the seven pieces from a laid layout, or fail. Two grounded bricks (bases), two free bricks
-	 * (heads), one grounded timber (post) and two free timbers (roof, overhang) is the only shape that
-	 * identifies — which is also the assertion that the builder's MATERIALS survived the Build path.
+	 * Names the seven pieces, or fails. Requires two grounded and two free bricks, one grounded and
+	 * two free timbers, so it also checks that materials survived Build.
 	 */
 	inline bool Identify(const FBrickLayout& Layout, FShed& Out)
 	{
@@ -158,7 +126,7 @@ namespace ShedScenarioTestSupport
 		return Support == EPieceSupport::Grounded || Support == EPieceSupport::Supported;
 	}
 
-	/** True when a live piece has lost every path to the earth — the outcome a dropped piece shows. */
+	/** True when a live piece has lost every path to the earth. */
 	inline bool HasLostTheEarth(const FStructure& S, int32 Piece)
 	{
 		if (S.IsPieceRemoved(Piece))
@@ -168,7 +136,7 @@ namespace ShedScenarioTestSupport
 		return !IsStanding(S.GetPieceSupport(Piece));
 	}
 
-	/** The oracle block that came from a given FStructure piece, via the bridge provenance. */
+	/** The oracle block mapped from a structure piece. */
 	inline int32 OracleBlockOfPiece(const RigidBlockOracle::FOracleProblem& Problem, int32 Piece)
 	{
 		for (int32 B = 0; B < Problem.PieceOfBlock.Num(); ++B)
@@ -182,12 +150,7 @@ namespace ShedScenarioTestSupport
 	}
 }
 
-/**
- * THE SHED ROW IS IN THE CATALOGUE, IT LAYS THE F1 SHED THROUGH THE BUILD PATH, IT STANDS AS LAID,
- * AND THE POST IT NAMES FELLS THE OVERHANG WHEN PULLED.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
- */
+/** The shed row lays the shed through Build, it stands, and pulling its named post fells the overhang. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedScenarioCatalogueTest,
 	"DestructionGame.World.Scenarios.ShedRow",
@@ -200,10 +163,7 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	using namespace DestructionLayout;
 	using namespace DestructionScenarios;
 
-	/* ================================================================================
-	 * ARM 0 — THE ROW EXISTS AND NAMES THE SHED. This is where F2 is RED: no `shed` row yet, so
-	 * IndexOfName answers INDEX_NONE and there is nothing to build or solve.
-	 * ================================================================================ */
+	// Arm 0: the row exists.
 
 	const int32 Index = IndexOfName(FName(ShedScenarioName));
 
@@ -221,22 +181,17 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 
 	const FScenario& Scenario = Catalogue()[Index];
 
-	/* --- the row must carry its own distinct map, or it is joinable only by ?Scenario= and collides
-	 * with sandbox in both content guards. A distinct Lvl_Shed is mandatory (see the file header). --- */
+	// The row has its own map (see the file header).
 	TestEqual(
 		TEXT("the shed row must name its own map 'Lvl_Shed' — a scenario cannot ride Lvl_Sandbox"),
 		FString(Scenario.MapName ? Scenario.MapName : TEXT("")), FString(ShedScenarioMapName));
 
-	/* --- the row must lay its structure through a LayStructure producer, exactly as the corbels do,
-	 * so that Build routes the shed builder rather than the running-bond fallback. --- */
+	// A LayStructure producer, so Build uses the shed builder, not the running-bond fallback.
 	TestTrue(
 		TEXT("the shed row must carry a LayStructure producer (the shed is not a running-bond wall)"),
 		static_cast<bool>(Scenario.LayStructure));
 
-	/* ================================================================================
-	 * ARM 0 (cont.) — DestructionScenarios::Build lays the seven-piece multi-material shed, and the
-	 * builder's MATERIALS survive the Build path (the F0/AdoptLayout promise, checked through Identify).
-	 * ================================================================================ */
+	// Build lays the seven-piece shed with its materials intact.
 
 	FBrickLayout Layout;
 	TArray<int32> Cut;
@@ -273,7 +228,6 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* The multi-material shape, as authored, having come through the catalogue Build path. */
 	TestTrue(TEXT("the back base is ClayBrick"), Layout.Structure.GetPiece(S.BackBase).Material == &ClayBrick);
 	TestTrue(TEXT("the front base is ClayBrick"), Layout.Structure.GetPiece(S.FrontBase).Material == &ClayBrick);
 	TestTrue(TEXT("the back head is ClayBrick"), Layout.Structure.GetPiece(S.BackHead).Material == &ClayBrick);
@@ -286,10 +240,7 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the laid shed knows where every piece and joint is, or every moment is silently zero"),
 		Layout.Structure.HasCompleteGeometry());
 
-	/* ================================================================================
-	 * ARM 1 — THE ASSEMBLED SHED STANDS. Oracle feasibility (Stands, lambda* at or above 1) and the
-	 * production outcome (Stranded == 0, roof and overhang held up). The catalogue-built F1 arm 0.
-	 * ================================================================================ */
+	// Arm 1: the assembled shed stands, in the oracle (lambda* >= 1) and in production.
 	{
 		FBrickLayout Assembled;
 		TArray<int32> AssembledCut;
@@ -345,14 +296,10 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* ================================================================================
-	 * ARM 2 — THE ROW'S CUT PULLS THE POST, AND THAT FELLS THE OVERHANG. The catalogue-built F1
-	 * arm 2: the level's headline "pull the post, it drops". The cut is the row's own, resolved by
-	 * Build; the mechanism must name the overhang a moving block and production must drop it, while
-	 * the two piers keep the earth. Assert on the mechanism, never on displacement.
-	 * ================================================================================ */
-
-	/* The row must name exactly the post as its cut — the watchable event this level exists for. */
+	/*
+	 * Arm 2: the row's cut pulls the post; the mechanism must name the overhang as moving and
+	 * production must drop it, while the piers stay grounded.
+	 */
 	TestEqual(
 		TEXT("ARM 2: the shed row must name exactly one cut — the post to pull"),
 		Cut.Num(), 1);
@@ -384,14 +331,12 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		/* Apply the row's own cut list — the removal the level performs after the hold. */
 		for (const int32 Piece : PulledCut)
 		{
 			Pulled.Structure.RemovePiece(Piece);
 		}
 
-		/* If the row named no cut (the RED-adjacent case dev must fix), pull the post ourselves so
-		 * the mechanism arm still says something rather than passing on an intact shed. */
+		// If the row named no cut, pull the post here so this arm does not pass on an intact shed.
 		if (PulledCut.Num() == 0)
 		{
 			Pulled.Structure.RemovePiece(PS.Post);
@@ -424,8 +369,7 @@ bool FShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 				*FString::Printf(TEXT("ARM 2: lambda* %.10g must sit clearly below 1"), Live.Lambda),
 				Live.bAnswered && Live.Lambda < 0.9);
 
-			/* The collapse mechanism (gravity dead) must NAME the overhang a moving block, so the
-			 * fall is a genuine loss of equilibrium and not a routing artefact. */
+			// The gravity-dead mechanism must name the overhang as moving, so the fall is real.
 			RigidBlockOracle::FOracleProblem Dead = Problem;
 			Dead.bGravityIsLive = false;
 			const RigidBlockOracle::FOracleResult DeadR = RigidBlockOracle::SolveRigidBlock(Dead);
