@@ -11,12 +11,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, for the reason recorded in CURRENT_STATE.md: an
- * anonymous namespace is private to a TRANSLATION UNIT and a unity build merges many
- * files into one, at which point two anonymous MakeNaN are the same MakeNaN and the
- * build fails on a redefinition between files that never refer to each other. The
- * using-directive goes INSIDE each RunTest body rather than at file scope, so these
- * names cannot leak into a later file in the same blob.
+ * Named, not anonymous: a unity build merges translation units, so two anonymous
+ * MakeNaN would collide. The using-directives go inside each RunTest body, not at file
+ * scope, to keep these names from leaking into another file in the same blob.
  */
 namespace LayoutTestSupport
 {
@@ -24,11 +21,10 @@ namespace LayoutTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * Unreal's default gravity, 980 cm/s2, spelled out here rather than imported so
-	 * the test fails if production gets it wrong instead of agreeing with it. Mass is
-	 * already kilograms and length already centimetres, so MassKg * 980 IS a force in
-	 * Unreal units — the 1 N = 100 uu conversion is baked into the 980, and applying
-	 * it a second time is the standard way to be wrong by exactly 100x.
+	 * Unreal's default gravity, 980 cm/s2, spelled out rather than imported so the test
+	 * fails if production gets it wrong. Mass is kg and length cm, so MassKg * 980 is a
+	 * force in uu: the 1 N = 100 uu conversion is baked into the 980, and applying it
+	 * again is out by 100x.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -38,14 +34,10 @@ namespace LayoutTestSupport
 	}
 
 	/*
-	 * THE UK METRIC BRICK AND ITS COORDINATING GRID, re-derived here rather than
-	 * quoted. 215 x 102.5 x 65 mm laid with a 10 mm joint gives a 225 x 112.5 x 75 mm
-	 * coordinating cell, and the running-bond offset is half a cell along the wall.
-	 *
-	 * Every one of these is exact in binary floating point — all of them are integer
-	 * quarters — so the areas below are exact products and the tests can compare them
-	 * without a tolerance. That is not an accident of the format; it is why exact
-	 * equality is the right assertion for a generative producer.
+	 * UK metric brick and its coordinating grid, re-derived rather than quoted.
+	 * 215 x 102.5 x 65 mm with a 10 mm joint gives a 225 x 112.5 x 75 mm cell; the
+	 * running-bond offset is half a cell along the wall. Every value is an integer
+	 * quarter-cm and so exact in binary, which is why the areas below use exact equality.
 	 */
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickDepthCm = 10.25;
@@ -60,13 +52,9 @@ namespace LayoutTestSupport
 	constexpr double HalfBatLengthCm = (BrickLengthCm - MortarCm) / 2.0;
 
 	/*
-	 * A BRICK SPANS TWO BRICKS BELOW, so it has TWO bed joints of 105.0625 cm2 each
-	 * and not one of 220.375. The overlap along the wall is 21.5 - 11.25 = 10.25 cm,
-	 * the full depth is 10.25 cm, so each bed joint is 105.0625 cm2.
-	 *
-	 * The cross-check that the geometry closes: 220.375 - 2 x 105.0625 = 10.25 cm2,
-	 * which is exactly the head-joint gap below — 1 cm of mortar across the 10.25 cm
-	 * depth. Asserted in BedAndHeadJointGeometry rather than left as a comment.
+	 * A brick spans two below, so it has two bed joints of 105.0625 cm2, not one of
+	 * 220.375. Overlap along the wall is 21.5 - 11.25 = 10.25 cm over the 10.25 cm depth.
+	 * Geometry closes: 220.375 - 2 x 105.0625 = 10.25 cm2, the head-joint mortar gap.
 	 */
 	constexpr double BedJointOverlapCm = BrickLengthCm - BondOffsetCm;
 	constexpr double BedJointAreaSqCm = BedJointOverlapCm * BrickDepthCm;
@@ -74,18 +62,10 @@ namespace LayoutTestSupport
 	constexpr double FullBedFaceAreaSqCm = BrickLengthCm * BrickDepthCm;
 
 	/*
-	 * THE JOINT IS A RECTANGLE, AND THE HALF-EXTENTS ARE HALF OF THE TWO OVERLAPS THE
-	 * AREA IS ALREADY THE PRODUCT OF.
-	 *
-	 * These are written as halves of the same overlaps the areas above are built from,
-	 * not as fresh literals, because the whole point of emitting them is that the
-	 * rectangle and the area describe ONE face. 4 x h_u x h_v must reproduce the area
-	 * exactly, and the loop below asserts that on the PRODUCED values rather than only
-	 * on these.
-	 *
-	 * A bed joint is 10.25 x 10.25 cm, so both halves are 5.125; a head joint is
-	 * 10.25 x 6.5, so 5.125 and 3.25. Every one is an integer eighth of a centimetre
-	 * and therefore exact in binary.
+	 * The joint is a rectangle; the half-extents are halves of the same two overlaps the
+	 * area is the product of, so the rectangle and the area describe one face (the loop
+	 * below asserts 4 x h_u x h_v == area on the produced values). A bed joint is
+	 * 10.25 x 10.25, so both halves 5.125; a head joint 10.25 x 6.5, so 5.125 and 3.25.
 	 */
 	constexpr double BedJointHalfAlongWallCm = BedJointOverlapCm / 2.0;
 	constexpr double HalfBrickDepthCm = BrickDepthCm / 2.0;
@@ -93,39 +73,20 @@ namespace LayoutTestSupport
 	constexpr double HalfBrickLengthCm = BrickLengthCm / 2.0;
 
 	/*
-	 * THE PLANE OF THE JOINT IS THE MID-PLANE OF THE MORTAR, NOT EITHER BRICK'S FACE,
-	 * AND THAT IS A DECISION RATHER THAN AN ACCIDENT.
-	 *
-	 * A 1 cm mortar bed has TWO faces, so "the contact plane" is ambiguous for every
-	 * joint in this wall and unambiguous only for the dry-stacked one. Taking either
-	 * brick's face would make the emitted geometry depend on WHICH HANDLE IS A — and
-	 * Layout.h's whole argument for emitting the pair and the normal as one atomic value
-	 * is that a joint's description must not be able to disagree with its own pairing.
-	 * Swapping the handles has to swap the normal AND NOTHING ELSE, which the mid-plane
-	 * satisfies and a face does not; the reversed rows below assert exactly that, bit for
-	 * bit. The mid-plane also degenerates continuously: at zero thickness the two faces
-	 * coincide and it lands on them.
-	 *
-	 * Between courses 0 and 1 that is the top of the lower brick plus half a joint,
-	 * 6.5 + 0.5 = 7.0 cm. Between two bricks in one course it is 10.75 + 0.5 = 11.25 cm,
-	 * which coincides with the bond offset and is derived here rather than reusing it.
+	 * The joint plane is the mid-plane of the mortar, not either brick's face: a 1 cm bed
+	 * has two faces, and taking one would make the geometry depend on which handle is A.
+	 * The mid-plane makes swapping the handles swap only the normal, and degenerates onto
+	 * the faces at zero thickness. Between courses that is 6.5 + 0.5 = 7.0 cm; within a
+	 * course 10.75 + 0.5 = 11.25 cm, which coincides with the bond offset.
 	 */
 	constexpr double BedJointPlaneZCm = BrickHeightCm + MortarCm / 2.0;
 	constexpr double HeadJointPlaneXCm = HalfBrickLengthCm + MortarCm / 2.0;
 
 	/**
-	 * 4 x h_u x h_v: the area the emitted rectangle claims, read back independently.
-	 *
-	 * The in-plane axes are taken from the NORMAL rather than from whichever components
-	 * happen to be non-zero, because "the two world axes that are not the separation
-	 * axis" is the definition the section modulus will be built on and a rectangle with
-	 * an accidental zero on an in-plane axis must come out as zero area rather than
-	 * being quietly skipped.
-	 *
-	 * Bit-identity with the area is affordable and is asserted with ==. Production
-	 * multiplies the two overlaps, this multiplies their halves back up by four, and
-	 * scaling by a power of two is exact in binary — so the two round identically and a
-	 * disagreement is a real disagreement.
+	 * 4 x h_u x h_v: the area the emitted rectangle claims, read back independently. The
+	 * in-plane axes come from the normal, not from whichever components are non-zero, so
+	 * an accidental zero on an in-plane axis reads as zero area rather than being skipped.
+	 * Scaling halves back up by four is exact in binary, so == against the area holds.
 	 */
 	double RectangleAreaOf(const FVector& HalfExtentCm, const FVector& InterfaceNormal)
 	{
@@ -156,17 +117,11 @@ namespace LayoutTestSupport
 	}
 
 	/*
-	 * Masses DERIVED FROM THE PROFILE, following StructureTest.cpp: importing density
-	 * is safe because Profiles.MaterialInvariants is the single external anchor for it
-	 * and everything here is downstream of that anchor, whereas a hand-set literal
-	 * would be a second place to be wrong. 1432.4375 cm3 at 1.9 g/cm3 is 2.72163125 kg
-	 * and 682.90625 cm3 is 1.29752188 kg.
-	 *
-	 * SAFE AT NAMESPACE SCOPE only because ClayBrick is an aggregate of literals and
-	 * therefore constant-initialised. Make it a computed ratio and static
-	 * initialisation order makes this silently zero, at which point every force
-	 * expectation here becomes zero too and the file passes while asserting nothing.
-	 * Each test opens with a guard against exactly that.
+	 * Masses derived from the profile, following StructureTest.cpp: density comes from
+	 * ClayBrick, the single anchor, not a second literal. 1432.4375 cm3 at 1.9 g/cm3 is
+	 * 2.72163125 kg; 682.90625 cm3 is 1.29752188 kg. Safe at namespace scope only because
+	 * ClayBrick is constant-initialised; a computed density could read zero here through
+	 * static-init order, so every test opens with a guard that this derived to positive.
 	 */
 	const double BrickMassKg =
 		ClayBrick.DensityGramsPerCubicCm * BrickLengthCm * BrickDepthCm * BrickHeightCm / 1000.0;
@@ -178,22 +133,16 @@ namespace LayoutTestSupport
 	const double BrickWeightUU = WeightOf(BrickMassKg);
 
 	/**
-	 * THE BED / HEAD THRESHOLD, spelled as the same literal production uses.
-	 *
-	 * Copied verbatim from StructureTest.cpp for the reason recorded there: this is a
-	 * transcription of FStructure::GetJointRole's tier decision, not a second opinion
-	 * about it, and written 1.0 / FMath::Sqrt(2.0) it would land an ulp away from the
-	 * constexpr constant in Structure.cpp. If the production constant changes, change
-	 * this to match; do not re-derive it.
+	 * The bed/head threshold, the same literal production uses. Transcribed from
+	 * FStructure::GetJointRole, not re-derived: 1.0 / FMath::Sqrt(2.0) would land an ulp
+	 * off the constexpr in Structure.cpp. If the production constant changes, match it.
 	 */
 	constexpr double BedJointCosine = 0.70710678118654752440;
 
 	/**
-	 * Force, in Unreal units, that loads the given area to the given stress.
-	 *
-	 * Spelled out rather than importing ForceUnitsPerMPaSqCm, so the test fails if
-	 * that constant is wrong instead of agreeing with it. 1 N = 100 uu, 1 cm2 =
-	 * 100 mm2, 1 MPa = 1 N/mm2, so 1 MPa over 1 cm2 is 10000 uu.
+	 * Stress in MPa a force produces over an area. Spelled out rather than importing
+	 * ForceUnitsPerMPaSqCm, so the test fails if that constant is wrong. 1 N = 100 uu,
+	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2, so 1 MPa over 1 cm2 is 10000 uu.
 	 */
 	constexpr double MPaForForce(double ForceUnits, double AreaSqCm)
 	{
@@ -207,13 +156,9 @@ namespace LayoutTestSupport
 	}
 
 	/**
-	 * A REAL +INFINITY, produced the same way MakeNaN produces its NaN.
-	 *
-	 * It has to be the actual IEEE infinity rather than a merely enormous finite
-	 * number, because the two are refused by different guards: +inf is caught by an
-	 * IsFinite check on the extent, whereas TNumericLimits<double>::Max() is finite,
-	 * passes any such check, and would need the AREA to be checked for overflow
-	 * instead. This file asserts the first; the second is recorded as a separate hole.
+	 * A real +infinity, the same way MakeNaN produces its NaN. Must be the actual IEEE
+	 * infinity, not a huge finite number: +inf is caught by an IsFinite check on the
+	 * extent, while DBL_MAX is finite and would need an overflow check on the area.
 	 */
 	double MakeInfinity()
 	{
@@ -222,7 +167,7 @@ namespace LayoutTestSupport
 		return One / Zero;
 	}
 
-	/** A box from its CENTRE and its FULL size, since bricks are quoted full size. */
+	/** A box from its centre and full size, since bricks are quoted full size. */
 	FPieceBox BoxOfSize(const FVector& CentreCm, const FVector& FullSizeCm)
 	{
 		FPieceBox Box;
@@ -248,19 +193,11 @@ namespace LayoutTestSupport
 	}
 
 	/**
-	 * The tier a joint has FOR ONE PIECE, transcribed from FStructure::GetJointRole.
-	 *
-	 * A connection is described by a normal pointing toward PieceB, so to ask what it
-	 * means for THIS piece the normal is first turned to point at this piece. Pointing
-	 * substantially UP at it, the joint is a bed joint beneath it and bears it.
-	 * Pointing substantially DOWN, the bed joint is above it and bears nothing.
-	 * Anything else is a head joint.
-	 *
-	 * HONEST ABOUT WHAT THIS IS WORTH: it is a transcription, so it catches a
-	 * transcription slip and nothing conceptual. What it is FOR here is asking a
-	 * question about the produced graph that the load numbers cannot answer — how many
-	 * joints beneath each brick actually bear it — which is the topology a spurious or
-	 * missing contact corrupts.
+	 * The tier a joint has for one piece, transcribed from FStructure::GetJointRole. The
+	 * normal is first turned to point at this piece: substantially up, a bed joint
+	 * beneath it that bears it; substantially down, a bed joint above it bearing nothing;
+	 * otherwise a head joint. Only catches a transcription slip, but it answers what the
+	 * load numbers cannot: how many joints beneath each brick actually bear it.
 	 */
 	enum class EJointRole : uint8
 	{
@@ -301,20 +238,12 @@ namespace LayoutTestSupport
 	}
 
 	/**
-	 * THE INDEPENDENT ORACLE for which pairs touch: a brute-force O(n2) scan over the
-	 * boxes the producer emitted.
-	 *
-	 * This is derived differently on purpose, and that is the entire value of it.
-	 * Production is GENERATIVE — it knows it is laying running bond, so it emits the
-	 * pairs it laid without looking at any geometry. This looks only at geometry and
-	 * knows nothing about bond patterns. An oracle that walked the courses the same way
-	 * production does would agree with a wrong producer enthusiastically.
-	 *
-	 * The rule: two boxes form a face when they are separated on EXACTLY ONE axis, by
-	 * the joint thickness, and overlap positively on the other two. Separated on two
-	 * axes they meet at an edge, on three at a corner — and a corner pair emitted as a
-	 * joint would be diagonal, which changes the joint's TIER and therefore where the
-	 * load ends up, which is far worse than a slightly wrong area.
+	 * Independent oracle for which pairs touch: a brute-force O(n2) scan over the emitted
+	 * boxes. Derived differently from the generative producer on purpose — it looks only
+	 * at geometry, so it cannot agree with a wrong producer the way a course-walking
+	 * oracle would. The rule: two boxes form a face when separated on exactly one axis by
+	 * the joint thickness and overlapping positively on the other two. Two axes is an
+	 * edge, three a corner; either emitted as a joint gets the tier wrong.
 	 */
 	struct FContact
 	{
@@ -327,16 +256,11 @@ namespace LayoutTestSupport
 		double AreaSqCm = 0.0;
 
 		/**
-		 * The face's own rectangle, derived from the BOX BOUNDS rather than from centre
-		 * differences, so it is a second derivation and not a restatement.
-		 *
-		 * Production works in centres, half-extents and overlaps; this intersects the two
-		 * closed intervals [min, max] on each axis and takes the midpoint and half-width
-		 * of what is left. On the separation axis the intersection is EMPTY — the
-		 * intervals are the joint thickness apart, so its "half-width" comes out negative
-		 * — and the midpoint of that empty interval is still exactly the mid-plane of the
-		 * mortar, which is the plane of the joint. The half-extent there is zero, because
-		 * a face has no thickness.
+		 * The face's own rectangle, from the box bounds rather than centre differences, so
+		 * it is a second derivation. Intersects the [min, max] intervals per axis and takes
+		 * the midpoint and half-width. On the separation axis the intersection is empty, but
+		 * its midpoint is still the mid-plane of the mortar; the half-extent there is set to
+		 * zero because a face has no thickness.
 		 */
 		FVector CentreCm = FVector::ZeroVector;
 		FVector HalfExtentCm = FVector::ZeroVector;
@@ -433,27 +357,20 @@ namespace LayoutTestSupport
 }
 
 /**
- * THE INTERFACE FACTORY: areas, normals, orientation and validation, written once.
+ * The interface factory: areas, normals, orientation and validation, written once.
+ * MakeInterface is the only way to build a joint, for the sake of the normal: it is the
+ * axis of separation signed by which handle is B, never the centroid direction. For a
+ * bed joint the centroid difference normalises to Z = 0.5547, below cos45, so a centroid
+ * normal makes every bed joint classify as a head joint and gravity resolves as shear
+ * against 0.2 MPa instead of compression against 10 MPa — the wall stands there being
+ * wrong. So the expected normals below are exact unit axes.
  *
- * MakeInterface is the only way to build a joint, and the reason is the normal. The
- * interface normal is the AXIS OF SEPARATION oriented by which handle is B — never
- * the direction between the two centroids. For a running-bond bed joint the centroid
- * difference is (11.25, 0, 7.5) cm, whose normalised Z is 0.5547, BELOW cos 45
- * degrees; a centroid normal therefore makes every bed joint in a wall classify as a
- * head joint, the sign-blind head tier makes every brick treat the joints above it as
- * supports, and gravity resolves as shear against 0.2 MPa of cohesion instead of
- * compression against 10 MPa. Nothing crashes and nothing collapses — the wall just
- * stands there being wrong. So the expected normals below are exact unit axis
- * vectors, and CentroidB - CentroidA is asserted against explicitly.
+ * Rejection is the other half: a pair separated on two axes (edge) or three (corner)
+ * emitted as a joint is a spurious diagonal that changes the tier. Degenerate boxes fail
+ * closed with a zero interface area, which routes through ComputeUtilisation's area guard
+ * so a caller that ignores the return value gets a joint that reads as failed.
  *
- * Rejection is the other half. A pair separated on TWO axes touches at an edge, on
- * three at a corner, and either emitted as a joint is a spurious diagonal contact
- * that changes the joint's tier. Degenerate boxes fail closed: the out connection is
- * left with a zero interface area, which routes through ComputeUtilisation's existing
- * area guard, so a caller that ignores the return value gets a joint that reads as
- * failed rather than one that reads as fine.
- *
- * World-free: plain arithmetic over boxes. No actors, no world, no ticking solver.
+ * World-free: plain arithmetic over boxes.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLayoutInterfaceTest,
@@ -465,10 +382,9 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	using namespace LayoutTestSupport;
 
 	/*
-	 * THE GEOMETRY CLOSES. A brick's bed face is 220.375 cm2 and it rests on two
-	 * bricks, so the two bed joints plus the head-joint gap below must account for all
-	 * of it. If this fails every area expectation in the file is describing a
-	 * different brick.
+	 * The geometry closes: a bed face is 220.375 cm2, so the two bed joints plus the
+	 * head-joint gap must account for all of it. If this fails, every area expectation in
+	 * the file describes a different brick.
 	 */
 	TestEqual(TEXT("a bed joint is 105.0625 cm2"), BedJointAreaSqCm, 105.0625);
 	TestEqual(TEXT("a head joint is 66.625 cm2"), HeadJointAreaSqCm, 66.625);
@@ -493,13 +409,10 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		double ExpectedAreaSqCm = 0.0;
 
 		/**
-		 * THE FACE'S OWN RECTANGLE, hand-derived per row, and the whole point of this
-		 * slice. Only read when the case is expected to be accepted.
-		 *
-		 * The centre is the midpoint of the overlap on each in-plane axis and the
-		 * MID-PLANE OF THE JOINT on the separation axis; the half-extent is half of each
-		 * in-plane overlap and exactly zero on the separation axis, because a face is a
-		 * rectangle and not a box.
+		 * The face's own rectangle, hand-derived per row. Only read when the case is
+		 * accepted. Centre is the overlap midpoint on each in-plane axis and the mid-plane
+		 * of the joint on the separation axis; half-extent is half each in-plane overlap and
+		 * exactly zero on the separation axis.
 		 */
 		FVector ExpectedCentreCm = FVector::ZeroVector;
 		FVector ExpectedHalfExtentCm = FVector::ZeroVector;
@@ -510,33 +423,22 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	const FPieceBox Spanning = FullBrickAt(BondOffsetCm, 1);
 
 	/*
-	 * A PIER BEARING WHOLLY INSIDE THE BEAM IT CARRIES: the padstone, the bearing plate,
-	 * the lintel on a wide pier — and the one shape a wall of same-sized bricks can never
-	 * make, which is why nothing above reaches it.
+	 * A pier bearing wholly inside the beam it carries (a padstone, bearing plate, lintel
+	 * on a wide pier) — the one shape a wall of same-sized bricks never makes. A 40 cm pier
+	 * under a 220 cm beam, both 10 cm through the wall, one mortar joint apart on Z. The
+	 * pier's whole top face bears, so the shared face is the pier's: 40 x 10 = 400 cm2.
 	 *
-	 * A 40 cm pier under a 220 cm beam, both 10 cm through the wall, separated on Z by one
-	 * mortar joint. The pier's whole top face lands on the beam, so the shared bearing IS
-	 * the pier's face: 40 x 10 = 400 cm2, a rectangle 40 cm long centred on the pier.
-	 *
-	 * Two placements, and the pair is the point. The INBOARD pier stands 20 cm in from the
-	 * beam's end, so the beam's span [0, 220] strictly CONTAINS the pier's [160, 200]. The
-	 * FLUSH pier is the same pier slid out until its outer face meets the beam's end,
-	 * [180, 220], which is exactly where containment begins — |centre difference| = 90 cm
-	 * equals |extent difference| = 110 - 20. Same pier, same beam, same bearing either way:
-	 * 400 cm2. Sliding a pier along under a beam it is entirely beneath cannot change how
-	 * much of it bears, and the flush row is what says the fix for the inboard one moves
-	 * nothing that already works.
-	 *
-	 * Every number here is an integer centimetre and so exact in binary, like the brick
-	 * dimensions above; the concrete-ish sizes are the fixture's own and are not published
-	 * values, because nothing in this file loads them.
+	 * Two placements. The inboard pier at [160, 200] is strictly contained by the beam's
+	 * [0, 220]; the flush pier slid out to [180, 220] sits exactly where containment begins
+	 * (|d| = 90 = |eA - eB|). Same 400 cm2 either way, and the flush row shows the fix for
+	 * the inboard one moves nothing that already works. Integer-cm sizes, exact in binary.
 	 */
 	constexpr double BeamLengthCm = 220.0;
 	constexpr double BeamHeightCm = 30.0;
 	constexpr double PierLengthCm = 40.0;
 	constexpr double PierHeightCm = 20.0;
 
-	/** Through the wall, shared by both — so Y overlaps fully and cannot govern the area. */
+	/** Through the wall, shared by both, so Y overlaps fully and cannot govern the area. */
 	constexpr double BearingDepthCm = 10.0;
 
 	/** How far the inboard pier's outer face stands in from the beam's end. */
@@ -547,14 +449,13 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	constexpr double FlushPierCentreXCm = BeamLengthCm - PierLengthCm / 2.0;
 
 	/*
-	 * The pier stands on the ground and the beam sits one mortar joint above its top face,
-	 * so the plane of the joint is the mid-plane of that mortar — the same rule every brick
-	 * row above is pinned against, restated on a fixture that shares none of its dimensions.
+	 * The beam sits one mortar joint above the pier's top face, so the joint plane is the
+	 * mid-plane of that mortar, the same rule as the brick rows on a different fixture.
 	 */
 	constexpr double BeamCentreZCm = PierHeightCm + MortarCm + BeamHeightCm / 2.0;
 	constexpr double BearingPlaneZCm = PierHeightCm + MortarCm / 2.0;
 
-	/** The pier is wholly under the beam, so the shared face is the PIER'S own top face. */
+	/** The pier is wholly under the beam, so the shared face is the pier's own top face. */
 	constexpr double BearingAreaSqCm = PierLengthCm * BearingDepthCm;
 
 	const FPieceBox Beam = BoxOfSize(
@@ -570,19 +471,13 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		FVector(PierLengthCm, BearingDepthCm, PierHeightCm));
 
 	/*
-	 * FIXTURE PRECONDITIONS FOR THE BEARING ROWS: pure arithmetic on the test's own boxes,
-	 * asserting only that this geometry can tell the two ways of measuring an overlap apart.
-	 *
-	 * An axis overlap taken as reach minus distance, extentA + extentB - |centre
-	 * difference|, equals the true interval intersection min(highs) - max(lows) only while
-	 * |centre difference| >= |extent difference|. Below that it over-reports by exactly the
-	 * shortfall. The inboard pier is strictly inside that boundary and the flush pier sits
-	 * exactly on it, so the two rows straddle the switchover from either side.
-	 *
-	 * THE HALF BAT ABOVE CANNOT DO THIS JOB, which is why these rows exist rather than a
-	 * tighter tolerance on that one. A 10.25 cm half bat on a 21.5 cm brick has
-	 * |d| = 5.625 = |eA - eB| to the last bit — the closest the whole suite comes, and it
-	 * lands precisely where the two arithmetics agree.
+	 * Fixture preconditions for the bearing rows: pure arithmetic on the test's own boxes,
+	 * asserting this geometry can tell the two ways of measuring an overlap apart. Reach
+	 * minus distance (eA + eB - |d|) equals the true intersection min(highs) - max(lows)
+	 * only while |d| >= |eA - eB|; below that it over-reports by the shortfall. The inboard
+	 * pier is strictly inside that boundary and the flush pier sits exactly on it. The half
+	 * bat cannot do this job: it has |d| = 5.625 = |eA - eB| exactly, right where the two
+	 * arithmetics agree.
 	 */
 	const double InboardCentreGapCm = FMath::Abs(InboardPierCentreXCm - BeamCentreXCm);
 	const double FlushCentreGapCm = FMath::Abs(FlushPierCentreXCm - BeamCentreXCm);
@@ -603,9 +498,9 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		FlushCentreGapCm == BearingExtentDifferenceCm);
 
 	/*
-	 * The two arithmetics, both spelled out, and asserted to DISAGREE by exactly the
-	 * shortfall. Reach minus distance gives 110 + 20 - 70 = 60 cm of face where only the
-	 * pier's own 40 cm bears — 20 cm too much, which is 10 cm hanging off each end.
+	 * The two arithmetics, asserted to disagree by exactly the shortfall. Reach minus
+	 * distance gives 110 + 20 - 70 = 60 cm where only the pier's 40 cm bears: 20 cm too
+	 * much, 10 cm hanging off each end.
 	 */
 	const double InboardReachMinusDistanceCm =
 		BeamLengthCm / 2.0 + PierLengthCm / 2.0 - InboardCentreGapCm;
@@ -629,47 +524,38 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 
 	const TArray<FInterfaceCase> Cases = {
 		/*
-		 * THE CASE THE WHOLE FACTORY EXISTS FOR. A brick offset half a cell along the
-		 * wall and one course up. The axis of separation is Z, so the normal is exactly
-		 * +Z pointing at PieceB; the centroid direction is (11.25, 0, 7.5) normalised,
-		 * whose Z is 0.5547 and which would make this a head joint.
+		 * The case the factory exists for. A brick offset half a cell and one course up.
+		 * Separation axis is Z, so the normal is +Z; the centroid direction normalises to
+		 * Z = 0.5547, which would make this a head joint.
 		 */
 		{
 			TEXT("a running-bond bed joint has an axis-of-separation normal, not a centroid one"),
 			0, LowerLeft, 1, Spanning, MortarCm,
 			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
 			/*
-			 * THE RECTANGLE THE WHOLE MOMENT MODEL HANGS OFF. The lower brick spans
-			 * X [-10.75, 10.75] and the spanning brick X [0.5, 22.0], so the face is
-			 * X [0.5, 10.75] — 10.25 cm wide, centred on 5.625. Full depth in Y, and on Z
-			 * the mid-plane of the mortar at 7.0. Zero half-extent on Z: a face is a
-			 * rectangle.
-			 *
-			 * 5.625 is not an arbitrary coordinate. The spanning brick's own centre is at
-			 * 11.25, so this joint sits 5.625 cm to one side of it — which is exactly the
-			 * eccentricity a brick sees when it loses its OTHER bed support, and the
-			 * assertion after the loop pins that the two joints straddle it symmetrically.
+			 * The rectangle the moment model hangs off. Lower brick X [-10.75, 10.75],
+			 * spanning brick X [0.5, 22.0], so the face is X [0.5, 10.75]: 10.25 wide,
+			 * centred on 5.625, full depth in Y, mid-plane of the mortar at Z = 7.0, zero
+			 * half-extent on Z. The 5.625 is the eccentricity a brick sees when it loses
+			 * its other bed support; the assertion after the loop pins the symmetry.
 			 */
 			FVector(BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
-		 * THE SAME JOINT DECLARED UPPER PIECE FIRST. The pair and the normal are one
-		 * atomic value: swap the handles and the normal must swap with them, which is
-		 * what makes a normal inconsistent with its pairing inexpressible. A
-		 * CONSISTENTLY flipped joint reports identical loads, so only the pairing can
-		 * catch this.
+		 * The same joint declared upper piece first. Swap the handles and the normal must
+		 * swap with them. A consistently flipped joint reports identical loads, so only
+		 * the pairing can catch this.
 		 */
 		{
 			TEXT("swapping the handles swaps the normal, and nothing else"),
 			0, Spanning, 1, LowerLeft, MortarCm,
 			true, FVector(0.0, 0.0, -1.0), BedJointAreaSqCm,
 			/*
-			 * IDENTICAL GEOMETRY, and "and nothing else" is now a claim with teeth. Naming
-			 * the upper brick first must not move the joint: the face is the same face,
-			 * and a centroid that slid to whichever brick was A would be a lever arm that
-			 * depended on declaration order. Asserted bit for bit against the row above.
+			 * Identical geometry. Naming the upper brick first must not move the joint: a
+			 * centroid that slid to whichever brick was A would be a lever arm dependent on
+			 * declaration order. Asserted bit for bit against the row above.
 			 */
 			FVector(BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
@@ -680,33 +566,28 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			0, LowerRight, 1, Spanning, MortarCm,
 			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
 			/*
-			 * The mirror of the first row. The right brick spans X [11.75, 33.25], so the
-			 * face is X [11.75, 22.0], centred on 16.875 — 5.625 cm the OTHER side of the
-			 * spanning brick's centre at 11.25.
+			 * The mirror of the first row. Right brick X [11.75, 33.25], so the face is
+			 * X [11.75, 22.0], centred on 16.875: 5.625 the other side of the spanning
+			 * brick's centre at 11.25.
 			 */
 			FVector(BrickPitchCm - BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
-		 * A head joint: separated along the wall, so the normal is +X. Note the
-		 * centroid direction happens to be +X here too, which is exactly why a head
-		 * joint cannot discriminate between the two rules and the bed joint above is
-		 * the case that matters.
+		 * A head joint: separated along the wall, so the normal is +X. The centroid
+		 * direction is +X here too, which is why a head joint cannot discriminate between
+		 * the two rules and the bed joint above is the case that matters.
 		 */
 		{
 			TEXT("a head joint between two bricks in one course"),
 			0, LowerLeft, 1, LowerRight, MortarCm,
 			true, FVector(1.0, 0.0, 0.0), HeadJointAreaSqCm,
 			/*
-			 * THE HEAD JOINT'S RECTANGLE, DERIVED INDEPENDENTLY OF THE BED JOINT'S and it
-			 * is a different shape: 10.25 deep by 6.5 tall, so the halves are 5.125 and
-			 * 3.25 rather than 5.125 twice. A producer that emitted half the brick's
-			 * footprint for every joint would match the bed rows and miss here.
-			 *
-			 * The face is the mid-plane of the mortar between the two bricks, X = 11.25,
-			 * and it spans the bricks' whole depth and whole height because they sit in
-			 * the same course at the same Y.
+			 * The head joint's rectangle, a different shape: 10.25 deep by 6.5 tall, so the
+			 * halves are 5.125 and 3.25, not 5.125 twice. A producer emitting half the
+			 * brick's footprint for every joint would pass the bed rows and miss here. The
+			 * face is the mortar mid-plane at X = 11.25, spanning the full depth and height.
 			 */
 			FVector(HeadJointPlaneXCm, 0.0, HalfBrickHeightCm),
 			FVector(0.0, HalfBrickDepthCm, HalfBrickHeightCm)
@@ -721,31 +602,29 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Stack bond, no offset at all: the full bed face. Separates the area
-		 * calculation from the bond pattern — a producer that returned 220.375 for
-		 * every bed joint would pass every running-bond row if this were the only shape
-		 * it were checked on, and vice versa.
+		 * Stack bond, no offset: the full bed face. Separates the area from the bond
+		 * pattern; a producer returning 220.375 for every bed joint would pass the
+		 * running-bond rows, and vice versa.
 		 */
 		{
 			TEXT("a brick directly above another shares its whole bed face"),
 			0, LowerLeft, 1, FullBrickAt(0.0, 1), MortarCm,
 			true, FVector(0.0, 0.0, 1.0), FullBedFaceAreaSqCm,
 			/*
-			 * THE HALF-EXTENT VARIES WITH THE BOND AND THE AREA IS NOT ENOUGH TO SAY SO.
-			 * Stack bond shares the whole 21.5 cm face, so the half-extent along the wall
-			 * is 10.75 rather than the running bond's 5.125 — a section modulus twice as
-			 * large about the same axis, which is the difference between a corbel that
-			 * stands and one that peels. Centred on the brick, since neither is offset.
+			 * The half-extent varies with the bond and the area cannot say so. Stack bond
+			 * shares the whole 21.5 cm face, so the half-extent along the wall is 10.75, not
+			 * running bond's 5.125: twice the section modulus about the same axis. Centred
+			 * on the brick, since neither is offset.
 			 */
 			FVector(0.0, 0.0, BedJointPlaneZCm),
 			FVector(HalfBrickLengthCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
-		 * A HALF BAT ON A FULL BRICK — the flush wall's mixed-size case. The half bat
-		 * sits wholly within the brick below along the wall, so the overlap is its own
-		 * 10.25 cm length and the area comes out at the SAME 105.0625 cm2. The joint
-		 * areas really are identical in both end treatments; what differs is the piece.
+		 * A half bat on a full brick: the flush wall's mixed-size case. The half bat sits
+		 * wholly within the brick below, so the overlap is its own 10.25 cm and the area is
+		 * the same 105.0625 cm2. Joint areas are identical in both end treatments; the piece
+		 * differs.
 		 */
 		{
 			TEXT("a half bat on a full brick is still a 105.0625 cm2 bed joint"),
@@ -759,50 +638,32 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			MortarCm,
 			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
 			/*
-			 * THE MIXED-SIZE ROW, AND THE ONE THAT CANNOT BE SATISFIED BY A SHORTCUT. For
-			 * two boxes of EQUAL size the overlap's midpoint is just the midpoint of their
-			 * centres, and every other accepted row here is a pair of equal boxes on the
-			 * axis that matters — so a producer that averaged the two centres would pass
-			 * all of them. Here it does not: the half bat sits at -5.625 and the brick
-			 * below at 0, whose midpoint is -2.8125, while the face really is the half
-			 * bat's own footprint X [-10.75, -0.5], centred on -5.625.
-			 *
-			 * The area is the same 105.0625 as a running-bond bed joint, so the area alone
-			 * cannot tell this face from that one either. The rectangle can: same size,
-			 * different place.
+			 * The mixed-size row, the one no shortcut satisfies. For equal boxes the overlap
+			 * midpoint is just the midpoint of the centres, and every other accepted row is
+			 * equal boxes on the axis that matters, so averaging the two centres would pass
+			 * them all. Not here: the half bat at -5.625 and the brick at 0 average to
+			 * -2.8125, while the face is the half bat's footprint X [-10.75, -0.5], centred
+			 * on -5.625. Same 105.0625 area as a bed joint, so only the rectangle tells them
+			 * apart: same size, different place.
 			 */
 			FVector(-BrickLengthCm * 0.5 + HalfBatLengthCm * 0.5, 0.0, BedJointPlaneZCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
-		 * A PIER BEARING WHOLLY INSIDE THE BEAM ABOVE IT, and the row the half bat above
-		 * cannot stand in for.
+		 * A pier bearing wholly inside the beam above it, the row the half bat cannot stand
+		 * in for. The half bat is the boundary case, |d| = |eA - eB| exactly, where reach
+		 * minus distance is still right. Move a small piece inboard of that and the larger
+		 * span contains the smaller, so the true face is the smaller piece's footprint and
+		 * reach minus distance over-reports it.
 		 *
-		 * The half bat overhangs the brick below it by nothing and reaches its far end
-		 * exactly, so |d| = |eA - eB| to the last bit: it is the boundary case, and reach
-		 * minus distance is right there. Move a small piece any distance INBOARD of that and
-		 * the larger span CONTAINS the smaller, at which point the true shared face is the
-		 * smaller piece's own footprint and reach minus distance over-reports it.
-		 *
-		 * Here the beam spans X [0, 220] and the pier X [160, 200]. The pier's whole top
-		 * face bears, so the joint is 40 cm long and 400 cm2. Reach minus distance gives
-		 * 110 + 20 - 70 = 60 cm and 600 cm2, on a rectangle spanning X [150, 210] — ten
-		 * centimetres of bearing face hanging in mid air at each end.
-		 *
-		 * WHY IT SURVIVES EVERY OTHER CHECK IN THIS FILE, AND WHY BOTH HALVES ARE PINNED
-		 * HERE. The centroid comes out RIGHT either way: it is built from the interval
-		 * intersection rather than from the overlap, so it lands on 180 whichever arithmetic
-		 * produced the width. And 4 x h_u x h_v == area still holds, because the rectangle
-		 * and the area are wrong TOGETHER — the half-extent is half the same over-reported
-		 * overlap the area is the product of. So asserting the area alone under-specifies
-		 * the fix, and asserting the invariant catches nothing at all. The area, the
-		 * rectangle AND the centroid all have to be named: two must move, one must not.
-		 *
-		 * NOT A HYPOTHETICAL SHAPE. A padstone, a bearing plate, a lintel on a wide pier and
-		 * a beam on a padstone are all a small piece bearing wholly inside a large one, and
-		 * BeamAcceptanceTest.cpp sidesteps this today by deliberately running its piers PAST
-		 * the beam's end so that no pair in it is ever contained.
+		 * Beam X [0, 220], pier X [160, 200]: the pier's whole top bears, so 40 cm and
+		 * 400 cm2. Reach minus distance gives 60 cm and 600 cm2 on X [150, 210], 10 cm
+		 * hanging off each end. It survives every other check here: the centroid is built
+		 * from the interval intersection so it lands on 180 either way, and 4 x h_u x h_v ==
+		 * area still holds because the half-extent and the area are over-reported together.
+		 * So the area, the rectangle and the centroid must all be named: two move, one does
+		 * not. BeamAcceptanceTest.cpp sidesteps this by running its piers past the beam's end.
 		 */
 		{
 			TEXT("a pier bearing wholly inside the beam above it shares only the pier's own face"),
@@ -813,12 +674,11 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE SAME CONTAINED PAIR DECLARED BEAM FIRST, and it is not a duplicate of the
-		 * swapped rows above: those swap two boxes of the same size, where any rule is
-		 * symmetric by construction. Containment is the one arrangement where the two boxes
-		 * play different parts, so a fix that reached for "the smaller extent" or branched on
-		 * which box was A could get the contained row green and this one wrong — a bearing
-		 * whose size depended on declaration order, in a quantity that divides a force.
+		 * The same contained pair declared beam first, not a duplicate of the swapped rows
+		 * above: those swap equal boxes, where any rule is symmetric. Containment is the one
+		 * arrangement where the boxes play different parts, so a fix reaching for "the smaller
+		 * extent" or branching on which box is A could get the contained row green and this
+		 * one wrong — a bearing size that depended on declaration order.
 		 */
 		{
 			TEXT("the same contained bearing declared beam first"),
@@ -829,17 +689,11 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE SAME PIER SLID OUT TO THE BEAM'S END: EXACTLY ON THE SWITCHOVER, and this row
-		 * is correct TODAY and must stay correct.
-		 *
-		 * At X [180, 220] the pier's outer face meets the beam's, so |d| = 90 = |eA - eB|
-		 * and the two arithmetics agree bit for bit — the same knife edge the half bat sits
-		 * on, restated in the coordinates where the defect lives. It pins the boundary from
-		 * the outside so a fix for the row above provably moves nothing that already works,
-		 * and it is the row that would catch an over-correction that started clamping one
-		 * step too early.
-		 *
-		 * Same 400 cm2 as the contained row, because it is the same pier under the same beam.
+		 * The same pier slid out to the beam's end, exactly on the switchover; correct today
+		 * and must stay so. At X [180, 220] the outer faces meet, so |d| = 90 = |eA - eB| and
+		 * the two arithmetics agree bit for bit. It pins the boundary from the outside, so a
+		 * fix for the row above moves nothing that works and an over-correction that clamped
+		 * one step too early would be caught. Same 400 cm2: same pier, same beam.
 		 */
 		{
 			TEXT("a pier flush with the beam's end sits exactly on the switchover and is unchanged"),
@@ -850,9 +704,8 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * A DRY-STACKED joint, thickness zero: the faces touch. Not degenerate — dry
-		 * stone is a real profile in the library — and it separates "the gap equals the
-		 * joint thickness" from "the gap is one centimetre".
+		 * A dry-stacked joint, thickness zero: the faces touch. Not degenerate (dry stone is
+		 * a real profile), and it separates "gap equals joint thickness" from "gap is 1 cm".
 		 */
 		{
 			TEXT("a zero-thickness joint is faces touching, and is a real joint"),
@@ -863,24 +716,20 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			0.0,
 			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
 			/*
-			 * DRY STACKED, AND THE ROW THAT SAYS THE MID-PLANE IS NOT A FUDGE. With no
-			 * mortar the two faces coincide at Z = 6.5, so mid-plane and contact face are
-			 * the same number and there is nothing to choose between them. Every mortared
-			 * row above sits half a joint away from either brick's face; this one pins
-			 * that the rule degenerates onto the faces rather than being offset by a
-			 * constant.
+			 * Dry stacked: the row that shows the mid-plane is not a fudge. With no mortar
+			 * the faces coincide at Z = 6.5, so mid-plane and contact face are the same
+			 * number. The mortared rows sit half a joint off either face; this pins that the
+			 * rule degenerates onto the faces rather than being offset by a constant.
 			 */
 			FVector(BondOffsetCm / 2.0, 0.0, BrickHeightCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
-		 * THE SPURIOUS DIAGONAL PAIR, and the worst thing this factory could emit. The
-		 * brick up one course and along one full cell is separated by exactly the joint
-		 * thickness on BOTH X and Z — it touches at an edge, and there is no face. A
-		 * producer that accepted it would hand the solver a joint whose normal is one
-		 * axis or the other, which is a coin flip between the bed tier and the head
-		 * tier, and the tier is what decides where load ends up.
+		 * The spurious diagonal pair, the worst thing this factory could emit. A brick up one
+		 * course and along one cell is separated by the joint thickness on both X and Z: it
+		 * touches at an edge, no face. Accepting it would hand the solver a joint whose normal
+		 * is one axis or the other, a coin flip between the bed and head tiers.
 		 */
 		{
 			TEXT("a diagonal neighbour touches at an edge and is not a joint"),
@@ -889,35 +738,20 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE CORNER: THE OTHER HALF OF THE SAME GUARD, AND THE HALF THAT FAILS OPEN.
+		 * The corner: the other half of the same guard, and the half that fails open. One
+		 * cell along, one through the depth and one course up, so all three gaps are the joint
+		 * thickness and the boxes meet at a point. Production refuses it with the same
+		 * SeparationCount != 1 line that refuses the edge, but the two jobs fail in opposite
+		 * directions. Weaken that guard to "reject 0 or 2" and 3 falls through: SeparationAxis
+		 * ends as 2, the Z thickness check passes, and the area is (-1.0) x (-1.0) = +1.0 cm2
+		 * — two negatives into a healthy positive, normal +Z, accepted. The graph gains a
+		 * phantom 1 cm2 bed joint between two bricks touching at a point, a real support under
+		 * the two-tier rule.
 		 *
-		 * One cell along the wall, one cell through the depth AND one course up, so all
-		 * THREE gaps are exactly the joint thickness and the boxes meet at a single
-		 * point. Production refuses it with the same SeparationCount != 1 line that
-		 * refuses the edge above — one line doing two jobs — and only the edge job had a
-		 * row until now.
-		 *
-		 * THE TWO JOBS FAIL IN OPPOSITE DIRECTIONS, which is why the edge row cannot
-		 * stand in for this one. Weaken the guard to an explicit "reject 0 or 2", a
-		 * perfectly plausible be-clear-about-what-we-reject refactor, and 3 falls
-		 * through: SeparationAxis ends as 2 because the last assignment wins, the
-		 * thickness check on Z passes, and the area is the product of the OTHER two
-		 * overlaps — (-1.0) x (-1.0) = +1.0 cm2. Two negatives multiply into a
-		 * healthy-looking positive, the normal is +Z, and AddConnection accepts it. The
-		 * graph gains a phantom 1 cm2 BED joint between two bricks touching at a point,
-		 * which under the two-tier rule is a real support: load routes through it and
-		 * the joint that should have carried that share under-reports.
-		 *
-		 * THE RUNNING-BOND SWEEP CANNOT CATCH IT. Every box RunningBond emits shares one
-		 * Y, so no pair in the 50-wall sweep is separated on three axes at all — 2430
-		 * pairs separated on two, zero on three — and none of those 2430 would yield a
-		 * positive area under the weakened guard, so they would be silently dropped and
-		 * the connection count would still match the oracle. This table is the only
-		 * defence.
-		 *
-		 * The area assertion in the loop below is doing real work on this row: a
-		 * weakened guard fails OPEN, so "refused" and "left with zero area" are two
-		 * different claims here rather than one restated.
+		 * The running-bond sweep cannot catch it: every RunningBond box shares one Y, so no
+		 * pair is separated on three axes and none would yield a positive area under the
+		 * weakened guard. This table is the only defence. The loop's area assertion does real
+		 * work here: a weakened guard fails open, so "refused" and "zero area" differ.
 		 */
 		{
 			TEXT("two bricks touching at a corner are separated on three axes and are not a joint"),
@@ -971,19 +805,12 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * FLUSH ON A SECOND AXIS: A LINE CONTACT, AND IT IS AN EDGE, NOT A ZERO-AREA
-		 * FACE. Offset a full brick depth in Y, so the Y faces are exactly flush and the
-		 * Y overlap is exactly 0.
-		 *
-		 * The comment here used to claim this reached the area calculation and asserted
-		 * that a zero-area face is refused rather than emitted with an area of zero. It
-		 * does not. Production counts the axes that do NOT overlap — !(Overlap > Tol) —
-		 * so an overlap of exactly zero IS a separated axis, this pair is separated on
-		 * two of them (Y at zero gap, Z at the joint thickness), and it is refused by the
-		 * SeparationCount != 1 branch alongside the diagonal and the corner, before any
-		 * area is computed. The assertion was always right; only the reasoning was wrong,
-		 * and a wrong reason is what makes somebody think a case is covered when a
-		 * different one is.
+		 * Flush on a second axis: a line contact, an edge, not a zero-area face. Offset a full
+		 * brick depth in Y so the Y faces are flush and the Y overlap is exactly 0. Production
+		 * counts axes that do not overlap, !(Overlap > Tol), so a zero overlap is a separated
+		 * axis: this pair is separated on two (Y at zero gap, Z at the joint thickness) and is
+		 * refused by SeparationCount != 1 before any area is computed, alongside the diagonal
+		 * and the corner.
 		 */
 		{
 			TEXT("faces flush on a second axis meet along a line, not on a face"),
@@ -1016,27 +843,15 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * AN INFINITE EXTENT, AND THE SAME GUARD'S OTHER HOLE. IsUsableBox checks
-		 * IsFinite on the CENTRE but only !(Extent > 0.0) on the extent, and +inf > 0.0
-		 * is true, so an infinite extent walks straight through the half of the guard
-		 * that was written to fail closed.
-		 *
-		 * It then cannot be caught downstream either, and that is what makes it worth a
-		 * row rather than a shrug. An infinite extent overlaps infinitely, so that axis
-		 * is never the axis of separation; here Y is infinite while X still overlaps by
-		 * 10.25 cm and Z is separated by exactly the joint thickness, so the pair looks
-		 * like a perfectly ordinary running-bond bed joint on every test that runs. The
-		 * area is then 10.25 x inf = +inf and the joint is ACCEPTED with an infinite
-		 * interface area — a fail-OPEN refusal, in the one place in this producer whose
-		 * documented job is to fail closed.
-		 *
-		 * FStructure::AddConnection would reject the non-finite area, so today this is a
-		 * wrong return value rather than a corrupt graph — but MakeInterface's contract
-		 * is that a refusal leaves a zero area, and a caller that ignores the return
-		 * value is exactly who that contract is for. Both halves of the loop below fire
-		 * on this row: the accept/refuse assertion, and the zero-area assertion.
-		 *
-		 * Deliberately a real +inf and not TNumericLimits<double>::Max(): see MakeInfinity.
+		 * An infinite extent, the same guard's other hole. IsUsableBox checks IsFinite on the
+		 * centre but only !(Extent > 0.0) on the extent, and +inf > 0.0 is true, so it walks
+		 * through the half written to fail closed. It cannot be caught downstream either: an
+		 * infinite extent overlaps infinitely, so that axis is never the separation axis. Here
+		 * Y is infinite while X overlaps by 10.25 and Z is separated by the joint thickness, so
+		 * the pair looks like an ordinary bed joint and is accepted with area 10.25 x inf =
+		 * +inf — a fail-open refusal. AddConnection would reject the non-finite area, so today
+		 * this is a wrong return value rather than a corrupt graph, but the contract is that a
+		 * refusal leaves zero area. Real +inf, not DBL_MAX: see MakeInfinity.
 		 */
 		{
 			TEXT("an infinite extent is not a joint"),
@@ -1081,10 +896,9 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Handle validation. FStructure::AddConnection rejects these too, but a factory
-		 * that produced them would push the failure a step away from where it happened
-		 * and, worse, would emit a joint whose pairing is meaningless while its geometry
-		 * looks perfect.
+		 * Handle validation. AddConnection rejects these too, but a factory that produced them
+		 * would move the failure away from its cause and emit a joint with meaningless pairing
+		 * and perfect-looking geometry.
 		 */
 		{
 			TEXT("a joint from a piece to itself is not a joint"),
@@ -1106,22 +920,18 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	for (const FInterfaceCase& Case : Cases)
 	{
 		/*
-		 * PRE-FILLED WITH A BOGUS AREA on purpose. A refusal has to ZERO the out
-		 * connection, not merely leave it alone: zero area is what routes a degenerate
-		 * joint through ComputeUtilisation's existing area guard, and a caller that
-		 * ignored the return value would otherwise be handed a joint that reads as
-		 * perfectly healthy.
+		 * Pre-filled with a bogus area on purpose. A refusal must zero the out connection, not
+		 * leave it alone: zero area routes a degenerate joint through ComputeUtilisation's area
+		 * guard, so a caller that ignores the return value is not handed a healthy-looking joint.
 		 */
 		FConnection Produced;
 		Produced.InterfaceAreaSqCm = 999.0;
 		Produced.InterfaceNormal = FVector(0.0, 1.0, 0.0);
 
 		/*
-		 * AND A BOGUS RECTANGLE, for the same reason one step further on. Zero extents
-		 * mean "no bending capacity known", which is a perfectly healthy state, so a
-		 * refusal that left these alone would hand back a joint claiming a section
-		 * modulus it never measured — a plausible lever arm on a face that does not
-		 * exist. A refusal must zero the geometry as well as the area.
+		 * And a bogus rectangle, for the same reason. Zero extents mean "no bending capacity
+		 * known", a healthy state, so leaving these would hand back a joint claiming a section
+		 * modulus it never measured. A refusal must zero the geometry as well as the area.
 		 */
 		Produced.InterfaceCentreCm = FVector(111.0, 222.0, 333.0);
 		Produced.InterfaceHalfExtentCm = FVector(7.0, 8.0, 9.0);
@@ -1172,11 +982,10 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE NORMAL IS COMPARED EXACTLY, and the area to 1e-12. Every dimension in this
-		 * file is an integer quarter of a centimetre and so exact in binary, the normal
-		 * is a unit axis vector whatever order it is derived in, and the producer is
-		 * generative rather than searching for a near miss. A disagreement at these
-		 * tolerances is a real disagreement rather than floating-point noise.
+		 * The normal is compared exactly, the area to 1e-12. Every dimension is an integer
+		 * quarter-cm and exact in binary, the normal is a unit axis vector however derived,
+		 * and the producer is generative. A disagreement at these tolerances is real, not
+		 * floating-point noise.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("%s: PieceA should be %d"), Case.Description, Case.HandleA),
@@ -1209,12 +1018,10 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			Produced.Strength.CompressiveStrengthMPa == GeneralPurposeMortar.CompressiveStrengthMPa);
 
 		/*
-		 * THE RECTANGLE, to the same 1e-12 the area gets. A centroid is a subtraction of
-		 * world positions rather than a unit axis vector, so it is not compared with ==
-		 * the way the normal is — but every coordinate here is an integer eighth of a
-		 * centimetre, so 1e-12 on a quantity of order 20 cm is a hundred million times
-		 * looser than the arithmetic and a hundred billion times tighter than the
-		 * smallest disagreement that could matter (half a mortar joint, 0.5 cm).
+		 * The rectangle, to the same 1e-12 as the area. A centroid is a subtraction of world
+		 * positions, not a unit axis, so it is not compared with ==; but every coordinate is an
+		 * integer eighth-cm, so 1e-12 is far looser than the arithmetic and far tighter than
+		 * the smallest disagreement that could matter, half a mortar joint (0.5 cm).
 		 */
 		TestTrue(
 			FString::Printf(
@@ -1239,25 +1046,13 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			Produced.InterfaceHalfExtentCm.Equals(Case.ExpectedHalfExtentCm, 1.0e-12));
 
 		/*
-		 * THE FACE CANNOT POKE OUTSIDE EITHER PIECE, asserted as a PROPERTY of every accepted
-		 * row rather than as another hand-derived number, and derived from the box BOUNDS
-		 * rather than from any overlap.
-		 *
-		 * A shared face is an intersection, so the rectangle must lie inside both boxes on
-		 * both in-plane axes. That is a different claim from the expected extents above and
-		 * strictly stronger than the invariant below it: 4 x h_u x h_v == area cannot see an
-		 * over-reported face at all, because the rectangle and the area are then wrong
-		 * together and agree with each other perfectly. This is the check that says the two
-		 * of them describe a face the pieces actually have.
-		 *
-		 * IN-PLANE AXES ONLY, and that exclusion is load-bearing rather than a convenience.
-		 * On the separation axis the centre is the MID-PLANE OF THE MORTAR, which lies
-		 * between the two boxes and therefore outside both of them by design — the one
-		 * coordinate of the emitted geometry that is deliberately in neither piece.
-		 *
-		 * 1e-12 on quantities of order 100 cm, for the same reason the rectangle above gets
-		 * it: every bound here is an integer eighth of a centimetre, so this is astronomically
-		 * looser than the arithmetic and astronomically tighter than half a mortar joint.
+		 * The face cannot poke outside either piece, asserted as a property of every accepted
+		 * row and derived from the box bounds. A shared face is an intersection, so the
+		 * rectangle must lie inside both boxes on both in-plane axes. This is strictly stronger
+		 * than 4 x h_u x h_v == area, which cannot see an over-reported face at all because the
+		 * rectangle and area are then wrong together. In-plane axes only: on the separation
+		 * axis the centre is the mortar mid-plane, deliberately outside both pieces. 1e-12 for
+		 * the same reason as the rectangle above.
 		 */
 		for (int32 Axis = 0; Axis < 3; ++Axis)
 		{
@@ -1288,12 +1083,10 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * ZERO ON THE NORMAL'S OWN AXIS, EXACTLY, and stated separately from the vector
-		 * above because it is a different claim. The vector says which rectangle; this
-		 * says the face is a rectangle at all. A near-zero thickness would give a joint a
-		 * section modulus about an axis it has no extent on, and the in-plane frame the
-		 * whole moment model uses is defined as "the two world axes that are NOT the
-		 * separation axis" — which only means anything if the third is exactly nothing.
+		 * Zero on the normal's own axis, exactly, a different claim from the vector above: the
+		 * vector says which rectangle, this says the face is a rectangle at all. A near-zero
+		 * thickness would give a section modulus about an axis with no extent, and the in-plane
+		 * frame is "the two axes that are not the separation axis" only if the third is nothing.
 		 */
 		for (int32 Axis = 0; Axis < 3; ++Axis)
 		{
@@ -1311,19 +1104,12 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE INVARIANT THAT MAKES THE PAIR ATOMIC, asserted on the PRODUCED values and
-		 * asserted EXACTLY.
-		 *
-		 * The area this joint reports and the rectangle it reports must be the same face.
-		 * An extent that disagrees with its area is the identical failure mode to a normal
-		 * that disagrees with its pairing — a plausible number attached to the wrong
-		 * geometry — and it is the invariant FStructure::AddConnection is about to enforce
-		 * at the door. Asserting it here as well is deliberate: the door can only refuse,
-		 * and this is the only place that can say the producer never builds one.
-		 *
-		 * Exact, not tolerant. Production multiplies the two overlaps; this multiplies
-		 * their halves back up by four, and scaling by a power of two is exact in binary,
-		 * so both round once to the same double.
+		 * The invariant that makes the pair atomic, on the produced values and exact. The area
+		 * and the rectangle must be the same face; an extent that disagrees with its area is
+		 * the same failure mode as a normal that disagrees with its pairing. AddConnection
+		 * enforces this at the door, but only the door can refuse — this is the only place that
+		 * says the producer never builds one. Exact because scaling halves back up by four is
+		 * exact in binary.
 		 */
 		const double RectangleAreaSqCm =
 			RectangleAreaOf(Produced.InterfaceHalfExtentCm, Produced.InterfaceNormal);
@@ -1337,14 +1123,10 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE ANTI-CENTROID ASSERTION, stated separately because it is the reason the
-	 * factory exists and a reader should not have to infer it from an expected vector.
-	 *
-	 * The first claim is a FIXTURE PRECONDITION — pure arithmetic on the test's own
-	 * boxes, asserting only that this geometry can tell the two rules apart. If the
-	 * brick format ever changed so that the centroid direction happened to be
-	 * substantially vertical, the second claim would stop discriminating and this would
-	 * say so rather than the suite quietly losing its coverage.
+	 * The anti-centroid assertion, stated separately because it is why the factory exists.
+	 * The first claim is a fixture precondition: pure arithmetic asserting this geometry can
+	 * tell the two rules apart. If the brick format made the centroid direction vertical, the
+	 * second claim would stop discriminating and this would say so.
 	 */
 	const FVector CentroidDirection = (Spanning.CentreCm - LowerLeft.CentreCm).GetSafeNormal();
 
@@ -1379,17 +1161,12 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * SWAPPING THE HANDLES SWAPS THE NORMAL AND MOVES NOTHING ELSE, asserted BIT FOR BIT
-	 * rather than to a tolerance, because it is a symmetry rather than a computation.
-	 *
-	 * The table above already pins both orderings against the same hand-derived
-	 * rectangle, which would catch the two disagreeing by more than 1e-12. This catches
-	 * them disagreeing at ALL — and it is the assertion that forbids the one alternative
-	 * definition of "the contact plane" that reads perfectly reasonable: putting the
-	 * centroid on PieceA's face. That is a real plane, it is where the mortar meets a
-	 * brick, and it would make every joint's lever arm depend on which brick the producer
-	 * happened to name first. Half a mortar joint of silent asymmetry, in a quantity that
-	 * multiplies a force.
+	 * Swapping the handles swaps the normal and moves nothing else, bit for bit because it is
+	 * a symmetry, not a computation. The table pins both orderings against the same rectangle,
+	 * catching a disagreement over 1e-12; this catches one at all. It forbids the plausible
+	 * alternative "contact plane" — the centroid on PieceA's face — which would make every
+	 * joint's lever arm depend on which brick was named first: half a mortar joint of silent
+	 * asymmetry in a quantity that multiplies a force.
 	 */
 	{
 		FConnection Forward;
@@ -1427,19 +1204,12 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE ECCENTRICITY A REAL BRICK ACTUALLY SEES, cross-checked from the emitted
-	 * centroids alone. This is what the rectangle is FOR, and it is worth stating as
-	 * arithmetic on produced values rather than leaving a reader to subtract two rows.
-	 *
-	 * A running-bond brick rests on two bed patches, one either side of its own centre.
-	 * The two centroids must straddle it SYMMETRICALLY — 5.625 cm each way — because that
-	 * symmetry is exactly what makes an intact wall's eccentricity zero rather than
-	 * merely small. If it were 5.624 and 5.626 every bed joint in a standing wall would
-	 * carry a small spurious moment, which is a plausible number and an invisible fault.
-	 *
-	 * And 5.625 is itself the number a brick sees when it LOSES one of the two: that is
-	 * the corbelled case, roughly a 200x change in the governing stress, so this one
-	 * coordinate is the difference between a wall that stands and a course that peels.
+	 * The eccentricity a brick actually sees, cross-checked from the emitted centroids. A
+	 * running-bond brick rests on two bed patches; the centroids must straddle it
+	 * symmetrically, 5.625 cm each way, because that symmetry makes an intact wall's
+	 * eccentricity exactly zero. 5.624 and 5.626 would give every bed joint a small spurious
+	 * moment. And 5.625 is what a brick sees when it loses one patch (the corbelled case,
+	 * roughly 200x change in governing stress).
 	 */
 	{
 		FConnection LeftPatch;
@@ -1477,18 +1247,11 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * SLIDING A PIER ALONG UNDER A BEAM IT IS ENTIRELY BENEATH CANNOT CHANGE HOW MUCH OF IT
-	 * BEARS, asserted between two PRODUCED joints rather than against either hand-derived
-	 * expectation above.
-	 *
-	 * This is the physical statement the two bearing rows encode, and it is worth making on
-	 * its own because it needs no expected value at all: the same pier, the same beam, moved
-	 * 20 cm along, must give the same area and the same rectangle SIZE, and its face must
-	 * simply travel with it. Anybody who disbelieved the hand-worked 400 cm2 still has to
-	 * explain why the flush pier bears 400 and the inboard one 600.
-	 *
-	 * Bit for bit, because it is a translation rather than a computation: both faces are the
-	 * pier's own footprint, and every coordinate involved is an integer centimetre.
+	 * Sliding a pier along under a beam it is entirely beneath cannot change how much of it
+	 * bears, asserted between two produced joints and needing no expected value: the same pier
+	 * and beam moved 20 cm along must give the same area and rectangle size, with the face
+	 * simply travelling with it. Bit for bit, because it is a translation: both faces are the
+	 * pier's own footprint over integer-cm coordinates.
 	 */
 	{
 		FConnection InboardBearing;
@@ -1539,38 +1302,25 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 }
 
 /**
- * WHAT A PIECE WEIGHS, DERIVED ONCE.
+ * What a piece weighs, derived once. LayBrick turns a box and a density into a mass, and
+ * the brick actor needs the same number; a second derivation is a second place to drift,
+ * which this project has paid for twice. So the arithmetic moves into PieceMassKg and
+ * LayBrick becomes a caller.
  *
- * LayBrick already turns the box it just emitted plus a density into a mass, and the
- * brick actor needs the same number for the same piece. A second derivation is a second
- * place for it to drift, which this project has already paid for twice — the half-bat
- * mass that circulated as 1.29777 kg and does not reproduce, and the break decision that
- * needed GetConnectionUtilisation written specifically to stop a third hand-copy. So the
- * arithmetic moves out into PieceMassKg and LayBrick becomes a caller.
+ * Exact equality, and the multiplication order is part of the spec. Density first,
+ * 1.9 x 21.5 x 10.25 x 6.5 / 1000, is exactly 2.72163125; volume first is one ulp low at
+ * 2.7216312499999997. LayBrick multiplies density first, so PieceMassKg must too or the
+ * refactor moves every full brick by an ulp. The full-brick row is the only one that can
+ * tell the orders apart, with a precondition asserting it still can.
  *
- * EXACT EQUALITY, AND THE MULTIPLICATION ORDER IS PART OF THE SPECIFICATION. Every
- * expectation below is a decimal worked out by hand from published dimensions and
- * densities, compared with ==, not with a tolerance. That is affordable because these
- * quantities really are exact in binary — but only in one order. Density first,
- * 1.9 x 21.5 x 10.25 x 6.5 / 1000, lands exactly on 2.72163125; volume first,
- * (21.5 x 10.25 x 6.5) x 1.9 / 1000, lands one ulp low at 2.7216312499999997. LayBrick
- * multiplies density first today, so PieceMassKg must too or the refactor moves every
- * full brick in every wall by an ulp. The full-brick row below is the only one in the
- * table that can tell the two orders apart, and there is a precondition asserting it
- * still can.
+ * Fail closed for a mass is not zero. AddPiece deliberately accepts a mass of zero, so
+ * returning zero for a degenerate box would launder it into a weightless piece that routes
+ * load and never breaks — fail-open at the only consumer. The refusal is a value the door
+ * already turns away: AddPiece guards !(MassKg >= 0.0) || !IsFinite, so a NaN is caught by
+ * the !(x >= 0.0) idiom (every comparison against NaN is false). The rows assert the
+ * property, not the spelling.
  *
- * FAIL CLOSED FOR A MASS IS NOT ZERO, and that is the sharp decision here.
- * FStructure::AddPiece deliberately ACCEPTS a mass of zero — "a massless piece is
- * meaningful" — so returning zero for a degenerate box would launder it into a real
- * piece that weighs nothing, sits in the graph, routes load and never breaks anything.
- * That is fail-OPEN at the only consumer there is. The refusal therefore has to be a
- * value the door already turns away: AddPiece guards !(MassKg >= 0.0) || !IsFinite, so a
- * NaN is refused by a check that is already written, needs no second guard, and is
- * caught by the !(x >= 0.0) idiom used throughout this codebase precisely because every
- * comparison against NaN is false. The rows below assert the PROPERTY — the door refuses
- * it, and it is not a plausible mass — rather than the spelling.
- *
- * World-free: arithmetic over a box and a scalar. No structure, no world, no actors.
+ * World-free: arithmetic over a box and a scalar.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLayoutPieceMassTest,
@@ -1582,10 +1332,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 	using namespace LayoutTestSupport;
 
 	/*
-	 * THE TWO DENSITIES THE EXPECTATIONS ARE BUILT ON, pinned before anything reads them.
-	 * Every mass below is a decimal derived by hand from one of these two numbers, so a
-	 * retune of either would make the whole table describe a different material while
-	 * still failing for what looks like an arithmetic reason.
+	 * The two densities the expectations are built on, pinned before anything reads them. A
+	 * retune of either would make the whole table describe a different material while failing
+	 * for what looks like an arithmetic reason.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -1600,10 +1349,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		StructuralConcrete.DensityGramsPerCubicCm == 2.4);
 
 	/*
-	 * THE ORDER REALLY IS OBSERVABLE, stated as arithmetic on the test's own literals
-	 * before any expectation depends on it. If a future brick format made the two orders
-	 * agree, the full-brick row would silently stop pinning the order and this says so
-	 * rather than the suite quietly losing that coverage.
+	 * The order really is observable, stated on the test's own literals before any
+	 * expectation depends on it. If a future brick format made the two orders agree, the
+	 * full-brick row would stop pinning the order and this says so.
 	 */
 	{
 		const double DensityFirst = 1.9 * 21.5 * 10.25 * 6.5 / 1000.0;
@@ -1627,28 +1375,25 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Description = nullptr;
 
-		/** FULL size, cm, because materials and bricks are quoted full size. */
+		/** Full size, cm, because materials and bricks are quoted full size. */
 		FVector FullSizeCm = FVector::ZeroVector;
 
 		double DensityGramsPerCubicCm = 0.0;
 
 		bool bExpectedUsable = false;
 
-		/** Hand-derived, and compared EXACTLY. Only read when the case is usable. */
+		/** Hand-derived, compared exactly. Only read when the case is usable. */
 		double ExpectedMassKg = 0.0;
 
-		/**
-		 * Deliberately off the origin and deliberately asymmetric: a mass that depended
-		 * on where the box sits would read wrong on every accepted row.
-		 */
+		/** Off-origin and asymmetric: a mass that depended on position would read wrong. */
 		FVector CentreCm = FVector(37.5, -12.25, 8.75);
 	};
 
 	const TArray<FMassCase> Cases = {
 		/*
-		 * THE ROW THE REFACTOR TURNS ON. 215 x 102.5 x 65 mm is 1432.4375 cm3, and at
-		 * 1.9 g/cm3 that is 2721.63125 g. It is also the only row here whose two
-		 * multiplication orders disagree, so it is the row that pins density-first.
+		 * The row the refactor turns on. 215 x 102.5 x 65 mm is 1432.4375 cm3, at 1.9 g/cm3
+		 * that is 2721.63125 g. The only row whose two multiplication orders disagree, so it
+		 * pins density-first.
 		 */
 		{
 			TEXT("a UK metric brick in clay"),
@@ -1658,11 +1403,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE HALF BAT, and the reason mass comes from the box rather than the spec: it
-		 * is 682.90625 cm3, so it must weigh 1.297521875 kg and not a full brick's
-		 * 2.72163125. Note this is NOT half of a full brick — the half bat is what is
-		 * left when a mortar joint is taken out of a brick and the remainder halved, so
-		 * it is 10.25 cm rather than 10.75.
+		 * The half bat, and why mass comes from the box not the spec: 682.90625 cm3, so
+		 * 1.297521875 kg, not a full brick's 2.72163125. Not half a brick: it is a brick less
+		 * a mortar joint, halved, so 10.25 cm rather than 10.75.
 		 */
 		{
 			TEXT("a half bat in clay"),
@@ -1672,9 +1415,8 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * A CUBIC METRE OF CONCRETE AT 2400 kg, which is the figure anybody can check
-		 * against a table without doing any arithmetic at all, and the one that catches a
-		 * factor of 1000 in either direction. 100 x 100 x 100 cm is 1e6 cm3.
+		 * A cubic metre of concrete at 2400 kg, checkable against a table without arithmetic
+		 * and catching a factor of 1000 either way. 100 x 100 x 100 cm is 1e6 cm3.
 		 */
 		{
 			TEXT("a cubic metre of structural concrete"),
@@ -1692,9 +1434,8 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * ONE CUBIC CENTIMETRE, which is where the g-to-kg conversion is visible on its
-		 * own: 1.9 grams is 0.0019 kg, and a function that forgot the /1000 would report
-		 * a 1 cm cube weighing nearly two kilos.
+		 * One cubic centimetre, where the g-to-kg conversion shows on its own: 1.9 g is
+		 * 0.0019 kg, and a missing /1000 would report a 1 cm cube weighing nearly two kilos.
 		 */
 		{
 			TEXT("one cubic centimetre of clay is 1.9 grams"),
@@ -1704,9 +1445,8 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THREE DIFFERENT DIMENSIONS INCLUDING A SUB-CENTIMETRE ONE, so a function that
-		 * cubed one axis or halved the wrong one lands nowhere near. 12.5 x 0.5 x 40 is
-		 * 250 cm3, at 2.4 that is 0.6 kg.
+		 * Three different dimensions, one sub-centimetre, so a function that cubed an axis or
+		 * halved the wrong one lands nowhere near. 12.5 x 0.5 x 40 is 250 cm3, at 2.4 is 0.6 kg.
 		 */
 		{
 			TEXT("a thin concrete plate, no two axes alike"),
@@ -1716,8 +1456,8 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * DEGENERATE BOXES. Each must come back as something FStructure::AddPiece
-		 * refuses, which zero is NOT — see the note on this test.
+		 * Degenerate boxes. Each must come back as something AddPiece refuses, which zero is
+		 * not — see the note on this test.
 		 */
 		{
 			TEXT("a box with no thickness is not a piece"),
@@ -1739,9 +1479,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * TWO NEGATIVE AXES IS THE ONE THAT FAILS OPEN. The signs cancel in the
-			 * product, so a guard that only checked the sign of the RESULT would hand
-			 * back a perfectly plausible 2.72163125 kg for a box that is inside out.
+			 * Two negative axes is the one that fails open. The signs cancel, so a guard that
+			 * only checked the sign of the result would return a plausible 2.72163125 kg for a
+			 * box that is inside out.
 			 */
 			TEXT("two negative dimensions multiply into a plausible mass and are still not a piece"),
 			FVector(-BrickLengthCm, -BrickDepthCm, BrickHeightCm),
@@ -1762,12 +1502,10 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * FINITE, AND STILL NOT A PIECE. DBL_MAX passes any IsFinite check on the
-			 * extent and only overflows once it is multiplied out, so this row is refused
-			 * by a different route from the +inf row above — the same distinction
-			 * IsUsableBox draws, recorded in CURRENT_STATE.md as a live hole in
-			 * MakeInterface. Either route satisfies the assertions below; what must not
-			 * happen is a finite plausible answer.
+			 * Finite and still not a piece. DBL_MAX passes an IsFinite check and only overflows
+			 * once multiplied out, so it is refused by a different route from the +inf row —
+			 * a live hole in MakeInterface recorded in CURRENT_STATE.md. What must not happen is
+			 * a finite plausible answer.
 			 */
 			TEXT("a DBL_MAX dimension is finite and still not a piece"),
 			FVector(TNumericLimits<double>::Max(), BrickDepthCm, BrickHeightCm),
@@ -1776,11 +1514,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A BOX NOBODY CAN PLACE IS NOT A PIECE EITHER, even though the mass does not
-			 * depend on the centre. There is one notion of a usable box in this producer,
-			 * IsUsableBox, and MakeInterface already refuses this box; a mass function
-			 * with a narrower opinion would be a second, weaker definition of the same
-			 * thing.
+			 * A box nobody can place is not a piece either, though the mass does not depend on
+			 * the centre. There is one notion of a usable box, IsUsableBox; a mass function with
+			 * a narrower opinion would be a second, weaker definition.
 			 */
 			TEXT("a box at a NaN position is not a piece"),
 			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
@@ -1790,8 +1526,8 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * DEGENERATE DENSITIES. RunningBond already refuses all four in its spec, so a
-		 * mass function that accepted them would be the more permissive of the two.
+		 * Degenerate densities. RunningBond refuses all four in its spec, so a mass function
+		 * that accepted them would be the more permissive of the two.
 		 */
 		{
 			TEXT("a weightless material is not a material"),
@@ -1826,11 +1562,10 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		const double MassKg = PieceMassKg(Box, Case.DensityGramsPerCubicCm);
 
 		/*
-		 * THE COMPOSED PROPERTY, asserted on every row in both directions: whatever comes
-		 * back must be usable at the one door it is going to be handed to. A usable box
-		 * has to produce a mass the structure accepts, and a degenerate one has to produce
-		 * a mass the structure turns away — which is what makes "fail closed" mean
-		 * something here rather than being a claim about a particular value.
+		 * The composed property, asserted both directions: whatever comes back must be usable
+		 * at the one door it is handed to. A usable box must produce a mass the structure
+		 * accepts, a degenerate one a mass it turns away — which is what makes "fail closed"
+		 * mean something here.
 		 */
 		FStructure Door;
 		const int32 Handle = Door.AddPiece(MassKg, /*bIsGrounded*/ false);
@@ -1846,10 +1581,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		if (!Case.bExpectedUsable)
 		{
 			/*
-			 * AND NOT ZERO, WHICH IS THE TRAP. Zero passes AddPiece's guard by design, so
-			 * if this ever reads 0 the assertion above has already failed — but stating it
-			 * separately is what tells the next reader that zero was considered and
-			 * rejected as the fail-closed value rather than merely not chosen.
+			 * And not zero, the trap. Zero passes AddPiece's guard by design, so a 0 here
+			 * means the assertion above already failed. Stated separately to show zero was
+			 * considered and rejected as the fail-closed value, not merely not chosen.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -1862,10 +1596,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * EXACT. Not IsNearlyEqual: every dimension and density in this table is exact in
-		 * binary and the expectations are hand-derived decimals that land exactly on the
-		 * density-first product. A tolerance here would accept the volume-first order,
-		 * which is the one thing this assertion is for.
+		 * Exact, not IsNearlyEqual: every dimension and density is exact in binary and the
+		 * expectations land exactly on the density-first product. A tolerance would accept the
+		 * volume-first order, which is the one thing this assertion is for.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -1878,10 +1611,9 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE BRICK'S WEIGHT, so the number the rest of the suite quotes is anchored to the
-	 * mass rather than only to itself. 2.72163125 kg x 980 cm/s2 is 2667.198625 uu, and
-	 * it is exact — the 1 N = 100 uu conversion is baked into the 980 and applying it
-	 * again is the standard way to be wrong by exactly 100x.
+	 * The brick's weight, anchoring the number the suite quotes to the mass. 2.72163125 kg x
+	 * 980 cm/s2 is 2667.198625 uu, exact: the 1 N = 100 uu conversion is baked into the 980,
+	 * and applying it again is out by 100x.
 	 */
 	{
 		const double BrickFromTheBox = PieceMassKg(
@@ -1896,14 +1628,10 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE REFACTOR'S SAFETY NET, WRITTEN BEFORE THE REFACTOR. LayBrick derives the same
-	 * number today, and the point of moving it out is that nothing about any wall may
-	 * change — so this asserts BIT-FOR-BIT agreement against the masses RunningBond is
-	 * already producing, on both end treatments, which is where the two piece sizes are.
-	 *
-	 * It is deliberately an agrees-with-production assertion, because agreement is the
-	 * required behaviour rather than a convenience: an ulp of disagreement here is an ulp
-	 * of movement in every full brick in every wall in the suite.
+	 * The refactor's safety net, written before the refactor. Moving the arithmetic out must
+	 * change no wall, so this asserts bit-for-bit agreement against the masses RunningBond
+	 * already produces, on both end treatments. Agreement is the required behaviour: an ulp
+	 * here is an ulp of movement in every full brick in the suite.
 	 */
 	{
 		const TArray<EWallEnd> Ends = { EWallEnd::Ragged, EWallEnd::Flush };
@@ -1962,17 +1690,16 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * FLOOR THE CROSS-CHECK, so a producer that laid nothing leaves this block
-		 * comparing an empty array and passing in silence. Two walls of 3 courses x 3
-		 * bricks: ragged is 3 + 2 + 3 = 8 pieces, flush is 3 + 4 + 3 = 10.
+		 * Floor the cross-check, so a producer that laid nothing does not pass in silence on an
+		 * empty array. Two 3 x 3 walls: ragged is 3 + 2 + 3 = 8 pieces, flush 3 + 4 + 3 = 10.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("the cross-check should span 18 pieces, compared %d"), PiecesCompared),
 			PiecesCompared, 18);
 
 		/*
-		 * AND BOTH PIECE SIZES MUST APPEAR, or the cross-check is 18 copies of the same
-		 * comparison and a half bat weighing a full brick would sail through it.
+		 * And both piece sizes must appear, or the cross-check is 18 copies of one comparison
+		 * and a half bat weighing a full brick would sail through.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1985,37 +1712,24 @@ bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THREE BOXES, ONE SPANNING BRICK: the smallest arrangement in which the produced
- * graph carries a load, and the smallest one where a centroid normal is catastrophic.
+ * Three boxes, one spanning brick: the smallest arrangement whose graph carries a load, and
+ * the smallest where a centroid normal is catastrophic. Two grounded bricks and a third
+ * spanning them: two bed joints of 105.0625 cm2 and one head joint of 66.625 cm2, and the
+ * spanning brick's 2667.198625 uu splits evenly over the two bed joints, 1333.5993125 uu
+ * each, in pure compression at 1.2693390e-4 of mortar's capacity. The head joint carries
+ * nothing, because both pieces it joins are grounded.
  *
- * Two grounded bricks side by side, a third spanning them. That is two bed joints of
- * 105.0625 cm2 and one head joint of 66.625 cm2, and the spanning brick's 2667.198625
- * uu splits evenly over the two equal bed joints: 1333.5993125 uu each, resolved as
- * PURE COMPRESSION, at 1.2693390e-4 of mortar's capacity. The head joint carries
- * exactly nothing, because both pieces it joins are already on the earth.
+ * Compression must be the governing axis: ComputeUtilisation returns the worst of three, so
+ * an expectation aimed at one axis can measure another. Here the force and the normal are
+ * both vertical, so shear and tension are exactly zero and only compression can govern; the
+ * assertions check all three loads so that stays visible.
  *
- * WHY COMPRESSION IS THE GOVERNING AXIS AND CANNOT SILENTLY BE SOMETHING ELSE:
- * ComputeUtilisation returns the WORST of the three axes, so an expectation aimed at
- * one axis can quietly be measuring another. Here shear and tension are exactly zero —
- * the force is vertical and the interface normal is exactly vertical — so their
- * utilisations are exactly zero whatever the capacities are, and compression is the
- * only axis that can govern. The assertions below check all three loads, not just the
- * ratio, so that stays visible rather than assumed.
- *
- * Under a centroid normal the two bed joints classify as head joints instead, gravity
- * resolves as shear against 0.2 MPa of cohesion rather than compression against
- * 10 MPa, and the utilisation lands 41.5x higher — with nothing broken and nothing
- * moved. Displacement could never see it; the classification can.
- *
- * THE 41.5 IS WORKED THROUGH, because the brief this test was written from said
- * "roughly 79x" and that figure does not reproduce on this case. The centroid normal
- * here is (0.8320503, 0, 0.5547002), which splits the same 1333.5993125 uu into
- * 739.7478 uu of compression and 1109.6217 uu of shear over the same 105.0625 cm2.
- * That is 7.041026e-4 MPa of compressive stress and 1.056154e-3 MPa of shear, against
- * a Mohr-Coulomb shear capacity of 0.2 + 0.6 x 7.041026e-4 = 0.20042246 MPa — so the
- * worst axis is 5.269638e-3 against the correct 1.269339e-4, a factor of 41.5. (74.8
- * is obtainable, but only as shear utilisation over compression utilisation BOTH read
- * under the wrong normal, which is not the comparison this sentence makes.)
+ * Under a centroid normal the bed joints classify as head joints, gravity resolves as shear
+ * against 0.2 MPa instead of compression against 10 MPa, and the utilisation lands 41.5x
+ * higher with nothing broken or moved. The normal (0.8320503, 0, 0.5547002) splits the same
+ * 1333.5993125 uu into 739.7478 compression and 1109.6217 shear over 105.0625 cm2: shear
+ * stress 1.056154e-3 MPa against a Mohr-Coulomb capacity of 0.2 + 0.6 x 7.041026e-4 =
+ * 0.20042246 MPa, so 5.269638e-3 against the correct 1.269339e-4, a factor of 41.5.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLayoutSpanningBrickTest,
@@ -2027,21 +1741,19 @@ bool FLayoutSpanningBrickTest::RunTest(const FString& Parameters)
 	using namespace LayoutTestSupport;
 
 	/*
-	 * THE DERIVATION RAN. BrickMassKg is computed at namespace scope from ClayBrick's
-	 * density; if static initialisation order ever made that read zero, every force
-	 * expectation below would become zero as well and the test would pass while
-	 * asserting nothing. Not a second anchor on what a brick weighs.
+	 * The derivation ran. BrickMassKg is computed at namespace scope from ClayBrick's density;
+	 * if static-init order made it read zero, every force expectation would become zero and
+	 * the test would pass asserting nothing. Not a second anchor on what a brick weighs.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("the brick mass must derive to something positive, got %.10g kg"), BrickMassKg),
 		BrickMassKg > 0.0);
 
 	/*
-	 * THE HAND-DERIVED NUMBERS, pinned BEFORE anything can return early on them, so the
-	 * whole chain — 1432.4375 cm3 at 1.9 g/cm3, x 980, halved over two equal bed joints,
-	 * over 105.0625 cm2, against mortar's 10 MPa — is anchored to something written out
-	 * rather than only to itself. A fixture precondition that only runs when the fixture
-	 * already worked is not a precondition.
+	 * The hand-derived numbers, pinned before anything can return early, so the whole chain
+	 * (1432.4375 cm3 at 1.9 g/cm3, x 980, halved over two bed joints of 105.0625 cm2, against
+	 * mortar's 10 MPa) is anchored to something written out. A precondition that runs only
+	 * when the fixture already worked is not a precondition.
 	 */
 	const double ShareUU = BrickWeightUU / 2.0;
 	const double BedUtilisation =
@@ -2075,9 +1787,8 @@ bool FLayoutSpanningBrickTest::RunTest(const FString& Parameters)
 		double ExpectedAreaSqCm = 0.0;
 
 		/*
-		 * SIGNED Z of the force the solver must store. Per ConnectionLoad.h the force
-		 * belonging to a connection is the force acting on PIECE B, so a joint that
-		 * names the loaded piece second carries it downward.
+		 * Signed Z of the force the solver must store. Per ConnectionLoad.h the force belongs
+		 * to piece B, so a joint that names the loaded piece second carries it downward.
 		 */
 		double ExpectedForceZUU = 0.0;
 		bool bExpectedBedJoint = false;
@@ -2180,11 +1891,10 @@ bool FLayoutSpanningBrickTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyZero(Force.X, Tolerance) && FMath::IsNearlyZero(Force.Y, Tolerance));
 
 		/*
-		 * ClassifyForce and ComputeUtilisation are called directly here rather than
-		 * through FConnection::ApplyForce, which DESIGN.md warns re-opens the
-		 * degenerate-normal hole. Safe because no break decision is made and every
-		 * normal in this fixture is a real plane — and necessary, because ApplyForce
-		 * LATCHES and this test wants to read the same joint more than once.
+		 * ClassifyForce and ComputeUtilisation are called directly, not through ApplyForce
+		 * (which DESIGN.md warns re-opens the degenerate-normal hole). Safe because no break is
+		 * decided and every normal here is a real plane, and necessary because ApplyForce
+		 * latches and this reads the same joint more than once.
 		 */
 		const FConnectionLoad Load =
 			DestructionForce::ClassifyForce(Force, Connection.InterfaceNormal);
@@ -2203,11 +1913,9 @@ bool FLayoutSpanningBrickTest::RunTest(const FString& Parameters)
 				&& FMath::IsNearlyZero(Load.Tension, Tolerance));
 
 		/*
-		 * THE UTILISATION, derived twice. Once from the load the test expects, through
-		 * a conversion spelled out independently of ForceUnitsPerMPaSqCm; and once
-		 * against a hand-written figure, so a slip in the derivation shows up as well as
-		 * a slip in production. Mortar's 10 MPa is read from the library, which
-		 * Profiles.ConnectionInvariants anchors.
+		 * The utilisation, derived twice: from the expected load through a conversion spelled
+		 * out independently of ForceUnitsPerMPaSqCm, and against a hand-written figure, so a
+		 * slip in either derivation or production shows. Mortar's 10 MPa comes from the library.
 		 */
 		const double ExpectedUtilisation = Expected.bExpectedBedJoint
 			? MPaForForce(Magnitude, Expected.ExpectedAreaSqCm)
@@ -2228,26 +1936,14 @@ bool FLayoutSpanningBrickTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A REAL WALL, both end treatments, asserted on TOPOLOGY rather than only on areas.
- *
- * Topology is discrete and needs no tolerance, and a missed or spurious contact is a
- * far worse failure than a slightly wrong area: a spurious diagonal pair changes a
- * joint's TIER, and routing is what decides where load ends up. So the pairs the
- * producer emits are checked against an INDEPENDENT ORACLE — a brute-force geometric
- * contact scan over the boxes it emitted — which is derived differently from the
- * generative producer on purpose. An oracle that walked the courses the way production
- * does would agree with a wrong producer.
- *
- * DETERMINISTIC AND EXHAUSTIVE RATHER THAN SEEDED. The parameter space that matters
- * here is small and enumerable — two end treatments x five heights x five lengths — so
- * a sweep covers it completely and reproduces exactly, which a seeded generator can
- * only approximate. Every case names itself in its failure message, so one case can be
- * lifted straight out into a named regression test.
- *
- * BOTH END TREATMENTS, per the decision recorded in CURRENT_STATE.md. Ragged is the
- * simpler default and uses one brick size; FLUSH puts half bats at alternating course
- * ends and is therefore the mixed-size case — a producer that only ever emits identical
- * pieces is not being tested very hard. The joint AREAS are the same in both.
+ * A real wall, both end treatments, asserted on topology rather than only areas. A missed or
+ * spurious contact is far worse than a wrong area: a spurious diagonal pair changes a joint's
+ * tier. So the emitted pairs are checked against an independent oracle, a brute-force contact
+ * scan derived differently from the generative producer, which a course-walking oracle could
+ * not be. Deterministic and exhaustive rather than seeded: two ends x five heights x five
+ * lengths enumerates completely and reproduces exactly, and each case names itself for lifting
+ * into a regression test. Ragged uses one brick size; flush adds half bats at alternating
+ * course ends, the mixed-size case. Joint areas are the same in both.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLayoutRunningBondTest,
@@ -2263,11 +1959,10 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 		BrickMassKg > 0.0);
 
 	/*
-	 * FIXTURE PRECONDITION on the two piece sizes, re-derived rather than quoted. A
-	 * full brick is 21.5 x 10.25 x 6.5 = 1432.4375 cm3 at 1.9 g/cm3 = 2.72163125 kg; a
-	 * half bat is 10.25 long, so 682.90625 cm3 = 1.297521875 kg. The brief this test
-	 * was written from said 1.29777 kg for the half bat, which does not reproduce —
-	 * 682.90625 x 1.9 is 1297.521875 g. The derived figure is the one used.
+	 * Fixture precondition on the two piece sizes, re-derived. A full brick is
+	 * 21.5 x 10.25 x 6.5 = 1432.4375 cm3 at 1.9 g/cm3 = 2.72163125 kg; a half bat is
+	 * 682.90625 cm3 = 1.297521875 kg. The brief said 1.29777 kg for the half bat, which does
+	 * not reproduce; the derived figure is used.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -2326,9 +2021,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * COURSES FROM THE BOXES, not from an assumed origin. Where the producer
-				 * puts the wall in space is not behaviour; how many pieces sit in each
-				 * course, and which of them touch, is.
+				 * Courses from the boxes, not an assumed origin. Where the wall sits in space is
+				 * not behaviour; how many pieces per course, and which touch, is.
 				 */
 				TArray<double> CourseHeights;
 				for (const FPieceBox& Box : Boxes)
@@ -2374,9 +2068,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * PIECE COUNTS PER COURSE. Ragged uses full bricks only, so an odd course
-				 * is one brick short at each end; flush inserts a half bat at each end of
-				 * an odd course, so it is one piece LONGER.
+				 * Piece counts per course. Ragged is full bricks only, so an odd course is one
+				 * short; flush adds a half bat at each end of an odd course, so one longer.
 				 */
 				for (int32 Course = 0; Course < CoursesHigh; ++Course)
 				{
@@ -2406,9 +2099,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * The extreme piece centres in each course, so "at a course end" is read
-				 * off the boxes rather than assumed from a handle ordering the producer
-				 * is free to choose.
+				 * The extreme piece centres per course, so "at a course end" is read off the
+				 * boxes rather than an assumed handle ordering.
 				 */
 				TArray<double> LowestXInCourse;
 				TArray<double> HighestXInCourse;
@@ -2424,8 +2116,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * MASS FROM THE BOX THE PRODUCER EMITTED. A wall whose half bats weighed a
-				 * full brick would route load correctly and report every number wrong.
+				 * Mass from the box the producer emitted. A wall whose half bats weighed a full
+				 * brick would route load correctly and report every number wrong.
 				 */
 				int32 FullBricks = 0;
 				int32 HalfBats = 0;
@@ -2463,9 +2155,9 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 					FullBricks + HalfBats, Boxes.Num());
 
 				/*
-				 * THE INDEPENDENT ORACLE. Brute-force contact scan over the emitted boxes
-				 * versus the pairs the generative producer emitted. Catches a MISSING
-				 * contact and a SPURIOUS one, which no count of areas can.
+				 * The independent oracle: a brute-force contact scan over the emitted boxes
+				 * versus the pairs the producer emitted. Catches a missing or spurious contact,
+				 * which no count of areas can.
 				 */
 				const TArray<FContact> Contacts = ContactsOf(Boxes, MortarCm);
 
@@ -2521,10 +2213,10 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 						FMath::IsNearlyEqual(Connection.InterfaceAreaSqCm, Contact.AreaSqCm, 1.0e-9));
 
 					/*
-					 * THE NORMAL IS THE AXIS OF SEPARATION, SIGNED BY WHICH HANDLE IS B.
-					 * Rebuilt here from the boxes alone — the axis the scan found, and the
-					 * sign of the centre difference ON THAT AXIS ONLY. Taking the sign from
-					 * the whole centre difference is what produces the centroid normal.
+					 * The normal is the separation axis, signed by which handle is B. Rebuilt from
+					 * the boxes: the axis the scan found, and the sign of the centre difference on
+					 * that axis only. Taking the sign from the whole difference gives the centroid
+					 * normal.
 					 */
 					FVector ExpectedNormal = FVector::ZeroVector;
 					ExpectedNormal[Contact.SeparationAxis] =
@@ -2545,16 +2237,12 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 						Connection.InterfaceNormal == ExpectedNormal);
 
 					/*
-					 * THE RECTANGLE, AGAINST THE ORACLE'S OWN. The scan derives it by
-					 * intersecting the two boxes' [min, max] intervals; production works in
-					 * centres and overlaps. Same face, two different routes to it — which
-					 * is the only reason checking 1150 of them is worth more than checking
-					 * the eight in the table above.
-					 *
-					 * 1e-9, matching the area comparison beside it, because the walls in
-					 * this sweep run to several metres and the sum-then-halve in the oracle
-					 * is not the same association as production's. A real disagreement here
-					 * is half a mortar joint, 0.5 cm, eight orders of magnitude away.
+					 * The rectangle, against the oracle's own. The scan intersects the [min, max]
+					 * intervals; production works in centres and overlaps. Same face, two routes,
+					 * which is why checking 1150 is worth more than the eight in the table above.
+					 * 1e-9, matching the area beside it: the walls run to several metres and the
+					 * oracle's sum-then-halve is a different association. A real disagreement is half
+					 * a mortar joint, 0.5 cm.
 					 */
 					TestTrue(
 						FString::Printf(
@@ -2588,13 +2276,10 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 						Connection.InterfaceHalfExtentCm[Contact.SeparationAxis] == 0.0);
 
 					/*
-					 * AND THE RECTANGLE AND THE AREA MUST BE THE SAME FACE, on all 1150.
-					 * This is the invariant FStructure::AddConnection refuses at the door,
-					 * so note the interlock above: if any joint in this wall violated it,
-					 * AddConnection would have dropped that joint and the contact-count
-					 * assertion would already have fired. The two assertions fail for
-					 * completely different reasons and both are worth having — a dropped
-					 * joint says the count is wrong, this says which face is wrong.
+					 * And the rectangle and the area must be the same face, on all 1150. This is the
+					 * invariant AddConnection refuses at the door: a violating joint would be dropped
+					 * and the contact-count assertion would already fire. Both are worth having — a
+					 * dropped joint says the count is wrong, this says which face is wrong.
 					 */
 					TestTrue(
 						FString::Printf(
@@ -2630,13 +2315,11 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * THE TOPOLOGY THE BRIEF NAMES: every piece above the bottom course rests
-				 * on TWO bed joints, except the pieces at the ends of a course, which rest
-				 * on one. Ragged puts those at both ends of every EVEN course above the
-				 * first; flush puts them at the two half bats of every ODD course.
-				 *
-				 * Head joints: two for a piece with a neighbour on each side, one at a
-				 * course end, none in a course of one.
+				 * The topology the brief names: every piece above the bottom course rests on two
+				 * bed joints, except course-end pieces, which rest on one. Ragged puts those at
+				 * both ends of every even course; flush at the two half bats of every odd course.
+				 * Head joints: two with a neighbour each side, one at a course end, none in a
+				 * course of one.
 				 */
 				int32 PiecesOnOneBedJoint = 0;
 
@@ -2703,11 +2386,10 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 					PiecesOnOneBedJoint, ExpectedOnOneBedJoint);
 
 				/*
-				 * THE OUTCOME. Solve and check the wall actually stands and actually
-				 * routes: nothing falling, every head joint carrying exactly nothing
-				 * because every brick has a bed joint beneath it, every bed joint in pure
-				 * compression, and the whole weight above the bottom course arriving at
-				 * the joints between courses 0 and 1.
+				 * The outcome. Solve and check the wall stands and routes: nothing falling, every
+				 * head joint carrying nothing (every brick has a bed joint beneath it), every bed
+				 * joint in pure compression, and the whole weight above the bottom course arriving
+				 * at the joints between courses 0 and 1.
 				 */
 				Layout.Structure.SolveLoads();
 
@@ -2784,8 +2466,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FLOOR THE SWEEP ITSELF, so a producer that laid nothing, or a loop that stopped
-	 * generating, fails rather than passing in silence with an empty table.
+	 * Floor the sweep itself, so a producer that laid nothing, or a loop that stopped early,
+	 * fails rather than passing in silence on an empty table.
 	 */
 	TestEqual(TEXT("the sweep should cover 50 walls"), WallsChecked, 50);
 	TestEqual(
@@ -2794,8 +2476,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 		JointsChecked, 1150);
 
 	/*
-	 * SPECS THAT DESCRIBE NO WALL. Rejected, writing nothing — a half-built layout is
-	 * worse than none, because the pieces it did emit would look like a real structure.
+	 * Specs that describe no wall. Rejected, writing nothing: a half-built layout is worse
+	 * than none, because the pieces it did emit would look like a real structure.
 	 */
 	struct FRejectedSpec
 	{
@@ -2824,9 +2506,9 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 		{ TEXT("a negative course count"), With([](FRunningBondSpec& S) { S.CoursesHigh = -2; }) },
 
 		/*
-		 * A COURSE ONE BRICK WIDE IS NOT A BOND. Ragged would leave every odd course
-		 * empty, so the wall would be a stack of disconnected bricks with a gap where a
-		 * course should be — and it would still solve, and still look plausible.
+		 * A course one brick wide is not a bond. Ragged would leave every odd course empty,
+		 * a stack of disconnected bricks with a gap where a course should be, and it would
+		 * still solve and still look plausible.
 		 */
 		{ TEXT("one brick per course is not a bond"), With([](FRunningBondSpec& S) { S.BricksPerCourse = 1; }) },
 		{ TEXT("no bricks per course"), With([](FRunningBondSpec& S) { S.BricksPerCourse = 0; }) },
