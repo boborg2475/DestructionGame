@@ -12,61 +12,20 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Every scenario in the catalogue is a map a human can actually join, and that map selects it.
- *
- * THE GAP THIS CLOSES, AND WHY NOTHING ELSE COULD HAVE CAUGHT IT. Every row of the catalogue
- * carries a `MapName` — `Lvl_CorbelE35`, `Lvl_CorbelF100` — and `World.Scenarios.Catalogue`
- * already proves `IndexOfMapName` finds each row from that string. What no test anywhere checks
- * is whether the string names a `.umap` that exists. Today only two do, so the map branch of
- * selection is dead for the other seven: they can never be reached by opening a level, and
- * `?Scenario=` on a URL is the only door into them. A player handed a list of scenarios finds
- * most of the doors are painted on. `Content.RequiredAssetsResolve` does not cover it — it sweeps
- * the paths C++ resolves through `ConstructorHelpers` and the references sitting on CDOs, and a
- * catalogue row's map name is neither.
- *
- * THE PATH IS DERIVED FROM THE ROW, NOT LISTED. A hardcoded table of nine paths would have to be
- * edited alongside every scenario added, and the edit is exactly what gets forgotten. So the
- * candidates are the row's own `MapName` under each folder a map of this project may live in:
- * `/Game/Maps/Scenarios/` for the scenario levels, and `/Game/Maps/` for `Lvl_Sandbox`, the
- * gameplay map the game already ships. Adding a scenario without adding its map therefore fails
- * here rather than at the player.
- *
- * RESOLVED AS A PACKAGE ON DISK, NOT BY LOADING A WORLD. `FPackageName::DoesPackageExist` asks
- * the mounted content tree whether the file is there and loads nothing, so this runs at
- * arithmetic speed under `-nullrhi` alongside the solver tests. Loading nine worlds — one of them
- * the hundred-step corbel — would be the most expensive thing in the suite, and it would test the
- * engine's map loader rather than this project's catalogue.
- *
- * AND THE MAP MUST SELECT THE ROW BACK, IN EVERY FORM ITS NAME ARRIVES IN. A map that exists but
- * selects the wrong scenario is worse than a map that is missing: the missing one fails to open,
- * and the wrong one opens and shows the player somebody else's wall. So the round trip is
- * asserted from the package path that was actually found rather than from the name the row
- * spells — a map placed in the wrong folder would otherwise pass the lookup assertions on a
- * string nothing on disk corresponds to.
- *
- * The decorations are `Tests/ScenarioSelectionTest.cpp`'s, deliberately the same list: bare asset
- * name, the `UEDPIE_<n>_` stamp PIE puts on it, a long package path, a PIE-prefixed package path,
- * and the full object path `DefaultEngine.ini` uses. That file pins them against one hand-written
- * map name; this one pins them against every map that exists on disk, which keeps working as
- * rows are added.
- *
- * Needs no ticking world, nor a world at all: a package query and a pair of string lookups.
+ * Every catalogue row's MapName names a .umap that exists, and that map selects the row back.
+ * Nothing else checks the file exists (Content.RequiredAssetsResolve covers only C++ and CDO
+ * references). Paths are derived from each row rather than listed, so a new row without a map
+ * fails here. Checked with DoesPackageExist, which loads nothing. The round trip uses the found
+ * package path, in every name form ScenarioSelectionTest.cpp covers (bare, PIE-prefixed, package
+ * and object paths), since a map selecting the wrong row is worse than a missing one. No world.
  */
 namespace ScenarioMapTestSupport
 {
 	using namespace DestructionScenarios;
 
 	/**
-	 * Where a scenario's map may live, and why there are exactly two.
-	 *
-	 * `/Game/Maps/Scenarios/` is where the scenario levels go — one `.umap` per catalogue row,
-	 * each a byte copy of the sandbox map with the game mode doing all the work, so no map is
-	 * ever authored or edited. `/Game/Maps/` is where `Lvl_Sandbox` already is: the gameplay map
-	 * the game ships, where moving it would change what pressing Play opens.
-	 *
-	 * `Content/Maps/FunctionalTests/` is deliberately not here. CLAUDE.md reserves it for
-	 * functional-test maps and excludes it from the cook, so a scenario found there would be a
-	 * level that works in the editor and is absent from a build.
+	 * Folders a scenario map may live in: Scenarios/ for scenario levels, and Maps/ for
+	 * Lvl_Sandbox. FunctionalTests/ is excluded because it is never cooked.
 	 */
 	const TCHAR* const ScenarioMapFolders[] =
 	{
@@ -74,7 +33,7 @@ namespace ScenarioMapTestSupport
 		TEXT("/Game/Maps/"),
 	};
 
-	/** PIE stamps `UEDPIE_<instance>_` onto the ASSET name, inside the path. */
+	/** PIE stamps `UEDPIE_<instance>_` onto the asset name. */
 	const TCHAR* const ScenarioMapPiePrefixes[] =
 	{
 		TEXT("UEDPIE_0_"),
@@ -109,20 +68,14 @@ namespace ScenarioMapTestSupport
 		/** The long package name that exists, e.g. `/Game/Maps/Scenarios/Lvl_CorbelE35`. */
 		FString PackageName;
 
-		/** The file behind it, so a failure can be taken straight to Explorer. */
+		/** The file on disk. */
 		FString Filename;
 
-		/** Every candidate, in the order they were tried — the whole of the failure message. */
+		/** Every candidate tried, for the failure message. */
 		FString Tried;
 	};
 
-	/**
-	 * The `.umap` for a row, looked for under each folder a map of this project may live in.
-	 *
-	 * The first hit wins and every candidate is recorded: a row whose map is missing has to say
-	 * exactly which paths were checked, or "the map does not exist" is a statement nobody can act
-	 * on without reading this file.
-	 */
+	/** A row's .umap under each allowed folder. The first hit wins; every candidate is recorded. */
 	inline FScenarioMapLocation ScenarioMapFindPackage(const TCHAR* MapName)
 	{
 		FScenarioMapLocation Location;
@@ -156,30 +109,16 @@ namespace ScenarioMapTestSupport
 		return Location;
 	}
 
-	/**
-	 * The root of the content tree the scenario maps live under, scanned as one directory.
-	 *
-	 * `/Game/Maps` covers `Lvl_Sandbox` at its top and every scenario in `Scenarios/` beneath it,
-	 * and `ScanPathsSynchronous` is recursive — so one path rather than the two folders above,
-	 * which are about where a row's `.umap` may be found rather than about what to scan.
-	 */
+	/** Root scanned for scenario maps; the scan is recursive, so it covers both folders. */
 	const TCHAR* const ScenarioMapScanRoot = TEXT("/Game/Maps");
 
 	/**
-	 * A floor on what the registry came back with, and the single most important line here.
-	 *
-	 * An asset registry that has not scanned `/Game/Maps` answers every query with an empty array,
-	 * and every per-row assertion below is written as "the world in this package must be named
-	 * X" — which a package with no worlds in it never contradicts. A test that read an unscanned
-	 * registry would go green by finding nothing at all, the worst outcome for a test whose whole
-	 * job is to notice that content is wrong.
-	 *
-	 * Twenty-nine: the twenty-eight scenario maps plus `Lvl_Sandbox`, the same count the catalogue
-	 * floor above asserts and for the same reason.
+	 * Floor on UWorlds the registry reports. An unscanned registry returns nothing, and the per-row
+	 * checks would pass vacuously. 29: 28 scenario maps plus Lvl_Sandbox.
 	 */
 	constexpr int32 ScenarioMapWorldAssetFloor = 29;
 
-	/** What the registry knows about one row's map, without any of it having been loaded. */
+	/** What the registry knows about one row's map, without loading it. */
 	struct FScenarioMapAsset
 	{
 		bool bResolved = false;
@@ -187,16 +126,16 @@ namespace ScenarioMapTestSupport
 		/** The long package name that exists, e.g. `/Game/Maps/Scenarios/Lvl_Wall01`. */
 		FString PackageName;
 
-		/** The package's own short name — what the UWorld inside it must be called. */
+		/** The package's short name, which the UWorld inside must share. */
 		FString ExpectedWorldName;
 
-		/** What the UWorld inside it is ACTUALLY called. */
+		/** The UWorld's actual name. */
 		FString ActualWorldName;
 
 		FPrimaryAssetId PrimaryAssetId;
 	};
 
-	/** Every UWorld the registry reports in one package, filtered by class rather than by count. */
+	/** Every UWorld the registry reports in one package. */
 	inline void ScenarioMapWorldsInPackage(
 		const IAssetRegistry& Registry, const FString& PackageName, TArray<FAssetData>& Out)
 	{
@@ -204,11 +143,7 @@ namespace ScenarioMapTestSupport
 
 		TArray<FAssetData> InPackage;
 
-		/*
-		 * On disk rather than from memory. The claim is about the file — a package that was copied
-		 * rather than duplicated carries the original's object name inside it — so an in-memory
-		 * UWorld that happened to be loaded under a different name would answer the wrong question.
-		 */
+		// On-disk only: the claim is about the file, not a loaded world.
 		Registry.GetAssetsByPackageName(
 			FName(*PackageName), InPackage, /*bIncludeOnlyOnDiskAssets*/ true);
 
@@ -237,16 +172,8 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 	const TArray<FScenario>& Rows = Catalogue();
 
 	/*
-	 * A floor on the sweep, so a catalogue that emptied — or a lookup that started answering
-	 * nothing — fails here rather than turning this into a loop over no rows that passes in
-	 * silence. A floor rather than an equality because adding a scenario is meant to be adding a
-	 * row.
-	 *
-	 * Twenty-nine: the nine slices A to C left, plus the twenty acceptance walls the user drew and
-	 * reviewed. Those twenty are the whole reason the acceptance set exists, and a wall that is
-	 * only a fixture is a wall nobody can stand in front of — so the floor is raised with them
-	 * rather than after them, and a catalogue that never grew the rows fails here rather than
-	 * sweeping the nine it already had and passing.
+	 * Floor, not equality, so the sweep cannot pass over an empty catalogue while rows can still be
+	 * added. 29: nine scenario-slice rows plus the twenty acceptance walls.
 	 */
 	constexpr int32 ScenarioMapRowFloor = 29;
 
@@ -304,12 +231,7 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 
 		/* --- TWO: and that map selects this row back, in every form its name arrives in --- */
 
-		/*
-		 * Built from the package that was found, not from the name the row spells. A map dropped
-		 * into the wrong folder still carries the right asset name, so a round trip written
-		 * against `Row.MapName` would pass against a level nothing can open. Split back out of the
-		 * found package so the asset name and the folder are the ones on disk.
-		 */
+		// Built from the found package, not Row.MapName, so the folder and name are the ones on disk.
 		FString FoundFolder;
 		FString FoundAssetName;
 
@@ -327,16 +249,16 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 
 		TArray<FString> Forms;
 
-		/* The bare asset name, which is what a cooked game's UWorld::GetMapName answers. */
+		// The bare asset name, as a cooked game's UWorld::GetMapName returns it.
 		Forms.Add(FoundAssetName);
 		Forms.Add(FoundAssetName.ToUpper());
 		Forms.Add(FoundAssetName.ToLower());
 
-		/* The long package path and the full object path a URL or DefaultEngine.ini hands over. */
+		// The long package path and the full object path (URL or DefaultEngine.ini).
 		Forms.Add(Location.PackageName);
 		Forms.Add(FString::Printf(TEXT("%s.%s"), *Location.PackageName, *FoundAssetName));
 
-		/* And PIE, whose instance number is not always zero, bare and inside the path. */
+		// PIE-prefixed, with non-zero instance numbers too, bare and inside the path.
 		for (const TCHAR* const PiePrefix : ScenarioMapPiePrefixes)
 		{
 			Forms.Add(FString(PiePrefix) + FoundAssetName);
@@ -359,7 +281,7 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 				Selected == Index && How == EScenarioSelection::ByMapName);
 		}
 
-		/* The direct lookup too, which is the promise IndexOfMapName itself makes. */
+		// The direct lookup too.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: IndexOfMapName('%s') must answer row %d; it answered %d"),
@@ -369,11 +291,7 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 
 	/* --- THREE: and no two rows claim the same map -------------------------------------- */
 
-	/*
-	 * On the package that was found rather than on the two name strings, the stronger claim of
-	 * the two: two rows spelling different names that resolve to one file on disk would pass a
-	 * comparison of the spellings and still make one of the two unreachable.
-	 */
+	// Compares found packages, not name strings, so two spellings of one file are caught.
 	for (int32 Index = 0; Index < Located.Num(); ++Index)
 	{
 		if (!Located[Index].bFound)
@@ -407,41 +325,12 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 }
 
 /**
- * And each of those maps is its own asset — a distinct world with a distinct PrimaryAssetId.
- *
- * THE DEFECT, AND WHY THE TEST ABOVE COULD NOT SEE IT. Every scenario map was made by
- * byte-copying `Lvl_Sandbox.umap` to a new filename. A `.umap` is a package, and the thing a
- * level actually is lives inside it as a `UWorld` object with a name of its own — a name a file
- * copy does not touch. So twenty-eight files called `Lvl_Wall01`, `Lvl_CorbelE35` and so on each
- * contained a world still called `Lvl_Sandbox`.
- *
- * `UWorld::GetPrimaryAssetId` answers `Map:<package name>`, and that string is baked into the
- * package as a tag when it is saved. A copy therefore carries the original's tag, so all
- * twenty-nine maps claimed `Map:/Game/Maps/Lvl_Sandbox`. The asset manager refuses the collision
- * — "Two different primary assets can not have the same type and name" — and the maps cannot be
- * opened in the editor.
- *
- * `Content.ScenarioMapsExist` asserts a `.umap` is on disk for every row and that the map's name
- * selects that row back. Both are true of a byte copy: it asks about the file, and the whole
- * defect lives in the difference between the file and the asset inside it. `-game` loading missed
- * it for a related reason: a cooked-style load never consults the asset manager at all.
- *
- * TWO CLAIMS, AND THE SECOND IS NOT IMPLIED BY THE FIRST. The world is named after its own
- * package: `/Game/Maps/Scenarios/Lvl_Wall01` must contain `Lvl_Wall01`, not `Lvl_Sandbox` — the
- * direct statement of the defect, and the property the fix (duplicating through the editor rather
- * than copying the file) restores. And no two rows claim the same PrimaryAssetId: the failure the
- * user hit is a collision, so the collision is what gets asserted rather than only the naming
- * rule that happens to imply it today. The id is read as a saved tag, not recomputed from the
- * name: a package saved under one name and renamed afterwards can carry a stale tag while its
- * world reads correctly, and that would pass the first claim and still collide.
- *
- * READ THROUGH THE ASSET REGISTRY, WHICH LOADS NOTHING. `FAssetData` carries the package name,
- * the object name and the saved tags straight from each package's header, so twenty-nine worlds
- * are inspected without a single one being loaded, and it runs headless under `-nullrhi` alongside
- * the solver tests. The paths are rescanned first: a cached registry from before the content was
- * touched would otherwise be answering about a different set of files.
- *
- * Needs no ticking world, nor a loaded world: a rescan and a set of header reads.
+ * Each scenario map is a distinct asset. Maps made by copying Lvl_Sandbox.umap kept the inner
+ * UWorld named Lvl_Sandbox, so all claimed the same PrimaryAssetId and the editor refused to open
+ * them; ScenarioMapsExist and -game loading both missed it. Asserts each package's world is named
+ * after the package, and that no two rows share a PrimaryAssetId (read as the saved tag, since a
+ * stale tag could collide even with a correct name). Uses the asset registry, rescanned first so a
+ * stale cache cannot answer; nothing is loaded.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioMapsAreDistinctAssetsTest,
@@ -464,13 +353,7 @@ bool FScenarioMapsAreDistinctAssetsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/*
-	 * Forced, so the answer is about the files as they are now. The registry is normally served
-	 * from `Intermediate/CachedAssetRegistry`, exactly as old as the last time anything scanned —
-	 * and content regenerated outside the editor is precisely the case where the cache and the
-	 * disk disagree. A stale cache would let a fixed map read broken, or a broken one read fixed,
-	 * both worse than a slow test.
-	 */
+	// Forced rescan: the cached registry can be stale when content is regenerated outside the editor.
 	Registry->ScanPathsSynchronous({FString(ScenarioMapScanRoot)}, /*bForceRescan*/ true);
 	Registry->WaitForCompletion();
 
@@ -590,13 +473,7 @@ bool FScenarioMapsAreDistinctAssetsTest::RunTest(const FString& Parameters)
 
 	/* --- FOUR: and no two rows claim the same PrimaryAssetId ----------------------------- */
 
-	/*
-	 * One failure per colliding row, naming the row it collides with, rather than a comparison of
-	 * every pair. Twenty-eight maps sharing one id is 378 colliding pairs, and a wall of those
-	 * says nothing a reader can act on; the first row to claim an id keeps it and every later
-	 * claimant is one named failure — also the shape the fix is checked against, since a single
-	 * map regenerated wrongly is one row named, not a shower.
-	 */
+	// One failure per colliding row, naming the first claimant, rather than one per pair.
 	TMap<FString, int32> ClaimedBy;
 
 	for (int32 Index = 0; Index < Found.Num(); ++Index)

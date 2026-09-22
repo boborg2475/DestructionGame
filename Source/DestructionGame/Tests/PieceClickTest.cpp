@@ -8,11 +8,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Named namespace, and named differently from every other one in this module — a unity
- * build merges many files into one translation unit. The world harness itself is not
- * redeclared here: it lives in Tests/BrickWorldTestSupport.h and is shared with
- * BrickActorTest.cpp and StructurePushTest.cpp, so a floor height and a tick length are
- * not two fixtures that can drift. Only what is specific to clicking is below.
+ * Uniquely named namespace (unity builds merge files). The world harness is shared in
+ * Tests/BrickWorldTestSupport.h; only click-specific support is here.
  */
 namespace PieceClickTestSupport
 {
@@ -20,29 +17,17 @@ namespace PieceClickTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * This file uses BrickWorldTestSupport::NarrowWaistWallSpec(3), not ::WallSpec, because
-	 * of the waist. The claim this test makes about committing is that the wall was
-	 * re-solved behind the deletion, visible only as a piece whose support answer changes
-	 * — and in the shared flush 2x3 wall nothing's answer changes when one brick goes (a
-	 * full brick spans two below it and keeps the other; a half bat falls back on its head
-	 * joint). Both are right physics and both make the re-solve invisible.
+	 * Uses NarrowWaistWallSpec(3), not WallSpec: the re-solve after a delete is only visible if
+	 * some piece's support changes, and in the flush wall none does.
 	 *
 	 *      course 2         [ 3 ][ 4 ]      head joint 3-4 between them
-	 *      course 1            [ 2 ]        THE WAIST — clicked and deleted
+	 *      course 1            [ 2 ]        the waist, clicked and deleted
 	 *      course 0         [ 0 ][ 1 ]      grounded
 	 *
-	 * Everything above course 0 reaches the ground only through piece 2, and deleting it
-	 * leaves 3 and 4 with each other's head joint and nothing else, so both read Falling.
-	 * Three courses rather than StructurePushTest.cpp's four, since nothing here ticks
-	 * physics and a fifth and sixth piece would only cost spawn time.
+	 * Deleting piece 2 leaves 3 and 4 with only their shared head joint, so both read Falling.
 	 */
 
-	/**
-	 * Fixture preconditions, asserted rather than assumed: 2 + 1 + 2 pieces, joints are the
-	 * two head joints 0-1 and 3-4 plus the four bed joints 0-2, 1-2, 2-3, 2-4. If a producer
-	 * change moves either number, this says so here rather than failing downstream with a
-	 * plausible wrong answer.
-	 */
+	/** Fixture preconditions: 5 pieces; head joints 0-1, 3-4 and bed joints 0-2, 1-2, 2-3, 2-4. */
 	constexpr int32 ClickWallPieceCount = 5;
 	constexpr int32 ClickWallJointCount = 6;
 
@@ -55,25 +40,16 @@ namespace PieceClickTestSupport
 		false, false, false, true, true
 	};
 
-	/**
-	 * How far along Y a trace starts and ends, either side of the wall. A brick is 10.25 cm
-	 * deep and the wall is centred on Y = 0, so +/- 100 cm is far outside it on both sides
-	 * and the ray crosses the whole thickness. Along Y, not X or Z, so nothing else in the
-	 * wall is in the way.
-	 */
+	/** Trace half-length along Y, well outside the 10.25 cm wall. Y so no other brick is in the way. */
 	constexpr double ClickTraceReachCm = 100.0;
 
 	/**
-	 * A point over the floor and clear of the wall. BrickWorldTestSupport's slab is scaled
-	 * 40x from a mesh whose local bounds run 0..100, so it spans X 0..4000 and Y 0..4000
-	 * with its top at Z = -50 — a known misplacement (SM_Cube's pivot is a corner, so the
-	 * slab does not straddle the origin and only the Y >= 0 half of any wall has floor
-	 * beneath it). Nothing here needs a brick to land on it, so it is left as is; this
-	 * point is simply chosen inside the half that genuinely has floor.
+	 * A point over the floor, clear of the wall. The harness slab spans X and Y 0..4000 (SM_Cube's
+	 * pivot is a corner, a known misplacement), so the point is chosen inside it.
 	 */
 	const FVector ClickFloorPointCm(100.0, 100.0, 0.0);
 
-	/** Far from the wall, above the floor's top face and above the slab's own footprint. */
+	/** Empty air, far from the wall and above the floor. */
 	const FVector ClickEmptyAirPointCm(500.0, 500.0, 300.0);
 
 	const TCHAR* ClickSupportName(EPieceSupport Support)
@@ -87,7 +63,7 @@ namespace PieceClickTestSupport
 		}
 	}
 
-	/** The labels a menu came back with, so a failure reads without a debugger. */
+	/** A menu's labels, for failure messages. */
 	FString DescribeClickMenu(const TArray<const FPieceAction*>& Menu)
 	{
 		if (Menu.Num() == 0)
@@ -110,7 +86,7 @@ namespace PieceClickTestSupport
 		return Line;
 	}
 
-	/** The Delete row, looked up by label so nothing hard-codes a position in the table. */
+	/** An action row looked up by label, not table position. */
 	const FPieceAction* FindClickAction(const TCHAR* Label)
 	{
 		for (const FPieceAction& Action : AllPieceActions())
@@ -126,37 +102,14 @@ namespace PieceClickTestSupport
 }
 
 /**
- * Clicking a brick resolves to that brick's piece, the menu is built from what the table
- * allows, committing deletes it and re-solves the wall, and the orphaned actor is
- * destroyed.
+ * Clicking a brick resolves to its piece, the menu offers Delete, and committing removes the
+ * piece, destroys its actor and re-solves the wall. One test to share one world.
  *
- * One test because one world: a world test costs tens of milliseconds of setup, and the
- * four claims below share a single wall in a single world — splitting them by assertion
- * would pay for the world four times over to learn nothing extra.
- *
- * The trace is asserted per piece, not once. The defect that matters is a wall whose
- * actors were spawned in the right places but handed the wrong refs; a single trace
- * cannot see that, but five traces through five known box centres can, since the wrong
- * answer has to be wrong for a particular brick. BrickActorTest.cpp already traces its
- * own wall this way, checking the spawner (that a brick's ref agrees with its bounds);
- * this test checks the chain — that the subsystem turns a ray into a handle with every
- * step failing closed — so the two overlap in fixture, not in subject.
- *
- * Fail-closed is asserted on the things a player actually clicks: the floor, and thin
- * air. Both must produce no piece, no menu and no action — the "no action" half is the
- * one a bare "it returned INDEX_NONE" would miss, since a commit path that ignored its
- * ref could still delete something.
- *
- * The commit is where ActorToDestroy is finally consumed. RunPieceAction is world-free
- * and hands the orphan back rather than destroying it, so until something calls it from a
- * world the deleted brick's mesh stays standing with no piece naming it. Three things are
- * asserted separately because each fails on its own: the piece left the graph, the actor
- * left the world, and the wall was re-solved — visible only because the fixture has a
- * waist, and nothing here calls SolveLoads after the commit.
- *
- * Needs a world — actors to spawn into, a physics scene for the trace to query, somewhere
- * to destroy an actor — but deliberately never ticks one; nothing here is about anything
- * falling (that is StructurePushTest.cpp's subject).
+ * Every brick is traced, since wrong refs on correctly placed actors only show per brick.
+ * Clicks on the floor and empty air must give no piece, no menu and no commit (a commit that
+ * ignored its ref could still delete). The commit's three effects are asserted separately: piece
+ * removed, actor destroyed (RunPieceAction only hands it back), and wall re-solved, with no
+ * SolveLoads call after the commit. Needs a world for actors and traces; never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceClickResolvesAndCommitsTest,
@@ -179,11 +132,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 
 	const FRunningBondSpec Spec = NarrowWaistWallSpec(3);
 
-	/*
-	 * The reference layout is laid separately, so the traced points come from the producer
-	 * rather than from whatever the subsystem happened to spawn — a spawner that put every
-	 * brick at the origin would otherwise be traced at the origin and agree with itself.
-	 */
+	// Trace points come from a separately laid layout, so a wrong spawner cannot agree with itself.
 	FBrickLayout Reference;
 
 	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
@@ -239,7 +188,6 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 		Bricks.Add(Brick);
 	}
 
-	/* The wall has to be solved before the fixture can claim anything about what holds it up. */
 	Binding->SolveLoads();
 
 	// One: a trace through brick k resolves to piece k, for every brick in the wall.
@@ -268,10 +216,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 				Piece, Piece, Hit.Ref.PieceIndex),
 			Hit.Ref.PieceIndex, Piece);
 
-		/*
-		 * The ref that comes back is the one a menu and a commit are built from, so it has
-		 * to resolve against the binding on its own account, not just agree with the handle.
-		 */
+		// The ref must resolve on its own, since menus and commits are built from it.
 		TestEqual(
 			FString::Printf(TEXT("the ref the trace at piece %d handed back should resolve to %d, got %d"),
 				Piece, Piece, Binding->ResolvePiece(Hit.Ref)),
@@ -325,11 +270,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 				Miss.Description, *DescribeClickMenu(Menu)),
 			Menu.Num(), 0);
 
-		/*
-		 * And nothing commits either — "it returned INDEX_NONE" is not the same claim: a
-		 * commit path that ignored its ref would satisfy every row above and still delete a
-		 * brick, precisely the click-the-floor-lose-a-wall bug.
-		 */
+		// Nothing commits: a commit path that ignored its ref would pass the checks above.
 		TestTrue(
 			FString::Printf(TEXT("%s must commit nothing"), Miss.Description),
 			!TestWorld.Subsystem->CommitPieceAction(Hit.Ref, *Delete));
@@ -355,11 +296,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 		FVector(WaistBox.CentreCm.X, WaistBox.CentreCm.Y - ClickTraceReachCm, WaistBox.CentreCm.Z),
 		FVector(WaistBox.CentreCm.X, WaistBox.CentreCm.Y + ClickTraceReachCm, WaistBox.CentreCm.Z));
 
-	/*
-	 * Reported and then carried on, rather than bailed out of: everything below commits
-	 * against the ref this click produced, so a run that stopped here would leave the far
-	 * end of the chain silently unexercised and looking green.
-	 */
+	// Report and continue rather than return, so the rest of the chain still runs.
 	if (WaistHit.PieceHandle != ClickWaistPiece)
 	{
 		AddError(FString::Printf(
@@ -397,8 +334,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* The positive control for the re-solve: these have to read held up now for reading
-		 * Falling after the commit to mean the wall was solved again. */
+		// Positive control: held up now, so Falling later proves a re-solve.
 		const EPieceSupport Support = Binding->GetStructure().GetPieceSupport(Piece);
 
 		TestTrue(
@@ -420,17 +356,13 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 		TEXT("the deleted piece must have let go of its actor"),
 		Binding->GetActor(ClickWaistPiece));
 
-	/*
-	 * The orphan left the world. RunPieceAction hands the actor back and destroys nothing;
-	 * without a caller that consumes it, a kinematic brick stays standing in the hole it
-	 * was deleted from — a collider nothing in the model knows about.
-	 */
+	// RunPieceAction only hands the actor back; the commit must destroy it.
 	TestTrue(
 		FString::Printf(TEXT("the deleted brick's actor must have been destroyed, it is %s"),
 			IsValid(WaistBrick) ? TEXT("still valid") : TEXT("gone")),
 		!IsValid(WaistBrick));
 
-	// And only that one — a commit that tore down the whole wall would satisfy the row above.
+	// And only that actor.
 	for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
 	{
 		if (Piece == ClickWaistPiece)
@@ -453,12 +385,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 			ClickWallPieceCount - 1, Binding->GetStructure().NumLivePieces()),
 		Binding->GetStructure().NumLivePieces(), ClickWallPieceCount - 1);
 
-	/*
-	 * The re-solve, and nothing between the commit and here called SolveLoads. With the
-	 * waist gone, pieces 3 and 4 have only each other's head joint and no path to the
-	 * ground; a wall nobody re-solved would still report them held up by a brick that is
-	 * no longer there.
-	 */
+	// The commit's own re-solve: pieces 3 and 4 have no path to the ground and must read Falling.
 	for (int32 Piece = 0; Piece < ClickWallPieceCount; ++Piece)
 	{
 		if (Piece == ClickWaistPiece)
@@ -487,10 +414,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * And clicking the hole the brick left finds nothing: the actor is gone, so the trace
-	 * misses — the same ref-going-stale that RunPieceAction's re-resolve exists for.
-	 */
+	// Clicking the hole finds nothing.
 	{
 		const FPieceHit Again = TestWorld.Subsystem->TracePiece(
 			FVector(WaistBox.CentreCm.X, WaistBox.CentreCm.Y - ClickTraceReachCm, WaistBox.CentreCm.Z),
@@ -507,8 +431,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 			PieceActionsFor(*Binding, Again.Ref).Num(), 0);
 	}
 
-	/* A second commit on the same ref did nothing and must say so — and must not hand a
-	 * second actor to be destroyed, which would be destroying something already destroyed. */
+	// A second commit on the same ref does nothing.
 	TestTrue(
 		TEXT("committing the same click a second time must report that it did nothing"),
 		!TestWorld.Subsystem->CommitPieceAction(WaistHit.Ref, *Delete));

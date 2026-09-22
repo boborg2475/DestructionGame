@@ -16,15 +16,10 @@
  */
 namespace InspectPieceBindingTestSupport
 {
-	/**
-	 * A floor on what the two contexts already map, so a collision sweep over nothing fails rather
-	 * than passing silently. IMC_Default carries eight mappings and IMC_MouseLook one; six is under
-	 * that and over zero, which is all it needs to be. An equality would need editing every time a
-	 * binding is added.
-	 */
+	/** Floor on existing mappings (eight plus one today) so the collision sweep cannot pass vacuously. */
 	constexpr int32 ExistingMappingFloor = 6;
 
-	/** Every mapping in a context, printed, so the log records what was bound at the time. */
+	/** Every mapping in a context, for the log. */
 	FString DescribeContext(const UInputMappingContext* Context)
 	{
 		if (Context == nullptr)
@@ -48,23 +43,10 @@ namespace InspectPieceBindingTestSupport
 }
 
 /**
- * The input that opens the piece menu exists, is mapped in IMC_Default, and its key is not
- * already doing something else.
- *
- * A test, not just an asset, because a binding added by hand and never asserted silently stops
- * existing the next time the asset is re-saved. CURRENT_STATE.md's instruction is to bind it
- * through the existing Enhanced Input assets and leave the binding checkable.
- *
- * The collision sweep is the half that needed checking first: the obvious key is a mouse button,
- * and the hazard is that one is already held to look around. It asserts generically that no key
- * mapped to the inspect action is mapped to any other action in either context, so it keeps
- * working when a binding is added. What the assets carry is printed on every run.
- *
- * IMC_Default rather than a new context: both contexts are already referenced and listed, so
- * adding a mapping to one is the least new surface.
- *
- * No ticking world: two assets and an action, loaded by path. Whether a key press reaches the
- * handler needs a possessed local player and is deliberately not asserted here.
+ * The piece-menu input action exists, is mapped in IMC_Default, and its key is used by no other
+ * action in either context (a mouse button may already be held to look). A hand-authored binding
+ * that is never asserted can vanish on re-save. No world; whether a press reaches the handler is
+ * not asserted here.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FInspectPieceBindingTest,
@@ -105,7 +87,6 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	// What is already bound, reported on every run: evidence kept in the log, not a stale comment.
 	AddInfo(FString::Printf(TEXT("IMC_Default maps: %s"), *DescribeContext(DefaultContext)));
 	AddInfo(FString::Printf(TEXT("IMC_MouseLook maps: %s"), *DescribeContext(MouseLookContext)));
 
@@ -124,10 +105,7 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * One: IMC_Default maps it at all. An action that exists but is mapped nowhere looks done and
-	 * does nothing.
-	 */
+	// One: IMC_Default maps it at all.
 	TArray<FKey> InspectKeys;
 
 	for (const FEnhancedActionKeyMapping& Mapping : DefaultContext->GetMappings())
@@ -144,10 +122,7 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 			InspectKeys.Num()),
 		InspectKeys.Num() >= 1);
 
-	/*
-	 * Two: every key it uses is free. Written over whatever the contexts contain, so the day
-	 * IA_MouseLook grows a held mouse button this fails instead of overlapping it.
-	 */
+	// Two: every key it uses is free, checked against whatever the contexts contain.
 	for (const FKey& InspectKey : InspectKeys)
 	{
 		for (const FEnhancedActionKeyMapping& Mapping : AllMappings)
@@ -164,10 +139,7 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * Three: and not in the look context. IMC_MouseLook is always-on free-look; a menu key there
-	 * would tie opening the menu to whether looking is active.
-	 */
+	// Three: not in the look context, or opening the menu would depend on look being active.
 	TestTrue(
 		TEXT("the inspect-piece action belongs in IMC_Default, not in the free-look context"),
 		!MouseLookContext->HasMappingForInputAction(InspectAction));

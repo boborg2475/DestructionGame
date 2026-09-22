@@ -12,54 +12,22 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Regional collapse prover, slice 3 (REGIONAL_PROVER_PLAN.md slice 3 reframed, review item 12) —
- * grow-on-contact, red. The committed flood is greedy-fill-to-cap: it floods the cap-ball around
- * the seed and poses it once. On a chain that is already optimal (slices 1-2 proved no
- * partial-fell-with-headroom gap). The gap opens only on a branching flood, where the greedy
- * cap-ball spends budget on blocks not in the mechanism and so reaches less of a long mechanism
- * than a mechanism-following grow does. This test drives that gap and is red until grow lands.
+ * Regional prover slice 3, grow-on-contact (REGIONAL_PROVER_PLAN.md, review item 12). The greedy
+ * flood fills the cap-ball around its seeds, so on a branching flood it spends budget on blocks
+ * outside the mechanism. Grow-on-contact follows only the mechanism.
  *
- * The fixture — a leaning stack plus a disconnected grounded island, both named in the seed.
- *   - The mechanism: the 30-course leaning stack (row-3 FALLS rung). Course 0 grounded; the
- *     whole-structure LP fells {1..29}. Its free top, piece 29, is a seed.
- *   - The dead-end branch: 20 grounded bricks laid clear of the stack (a standing wall on its own
- *     foundation). Every brick is grounded, so it never moves and is never in the truth. Piece 30
- *     is the second seed.
+ * Fixture: a 30-course leaning stack (course 0 grounded; the whole-structure LP fells {1..29};
+ * seed piece 29) and a disconnected island of 20 grounded bricks (seed piece 30). The island is
+ * disconnected because a bonded grounded branch would prop the stack and change the truth; a
+ * +Y branch would give an out-of-plane joint the 2D oracle refuses.
  *
- * A disconnected island rather than a connected fork: for a branch to stand in the region pose it
- * must own ground, but a grounded branch bonded into the stack props it and reshapes the truth to
- * the part above the prop — which the top-seeded flood reaches first, erasing the gap. A
- * disconnected island bonded to nothing keeps the truth the whole stack {1..29} while forcing the
- * greedy flood to split its cap-ball between the two components. (A +Y-attached branch was rejected:
- * it puts an out-of-plane normal on a joint that the 2D X-Z oracle correctly refuses.)
+ * At cap 44 greedy admits all 20 island bricks and fells only {7..29}; grow ignores the island and
+ * fells {1..29}. The stack-only arm fells {1..29} at the same cap, so the cap is not the limit.
+ * Asserts on support state, never displacement.
  *
- * The hand argument (measured, see the constants below):
- *   - Greedy at cap 44 seeded with both {29} and the island {30}: the BFS interleaves the two,
- *     admits all 20 island bricks, and has only ~24 blocks left for the stack — reaching course 7
- *     and felling {7..29} (23). Courses {1..6} read Supported.
- *   - Grow-on-contact seeded the same way follows only the mechanism: the island stands on its own
- *     ground and is never a growth candidate, so grow spends the whole cap on the stack and fells
- *     {1..29}.
- *   - Cap-sufficiency witness (the stack-only arm): the same flood seeded with only {29}, at cap 44,
- *     never reaches the island and fells {1..29} in 30 blocks. So cap 44 is not the limit — the
- *     island is the sole reason the island-seeded greedy flood stops at course 7.
- *
- * The red: the island-seeded prove must fell {1..29} — a strict superset of greedy's {7..29}, every
- * felled piece inside the truth, the island never felled, nothing stranded. Today greedy fells
- * {7..29}, so {1..6} read Supported: red because grow-on-contact is missing. The stack-only and
- * truth arms pass today, so it is not a chain regression.
- *
- * Assert on mechanism, never displacement: which pieces read Falling, the released count,
- * subset-of-truth, the island never Falling, 0 stranded.
- *
- * Invariants this must not break (for dev-expert): the seam (cap >= size fells {1..29}), the
- * grounded cut (chain {16..29}/14 unchanged), the cap-invariant guard (|R u B| <= cap at every
- * step), determinism (permutation-invariant), and the cascade seam (a local over-hold terminates
- * in ~1 solve). Grow by a chunk / geometric step, not a ring at a time, so a local mechanism
- * terminates in 1-2 solves and a cap-spanning one in a few, not cap-many.
- *
- * No ticking world: pure FOracleProblem solves and FStructure state queries. Units derived here,
- * never imported. Named namespace, not anonymous.
+ * Invariants dev must keep: cap >= size fells {1..29}; the grounded-cut chain {16..29}/14; |R u B|
+ * <= cap at every step; permutation invariance; a local over-hold settles in about one solve. Grow
+ * in chunks, not a ring at a time. No world. Named namespace.
  */
 namespace RegionalProverGrowOnContactSupport
 {
@@ -78,18 +46,13 @@ namespace RegionalProverGrowOnContactSupport
 	constexpr double BrickMassKg =
 		ClayDensityGramsPerCubicCm * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
-	/** The row-3 FALLS rung: 30 courses, whose whole-structure ground-only LP fells 29 pieces. */
+	/** The row-3 FALLS rung: 30 courses, of which the LP fells 29. */
 	constexpr int32 Courses = 30;
 
-	/**
-	 * The grounded island: 20 bricks. Sized so a cap-44 greedy flood that admits all 20 has too few
-	 * blocks left to reach the stack's base, while grow-on-contact ignores it and spends the whole 44
-	 * on the 30-block stack.
-	 */
+	/** Island size: enough that a cap-44 greedy flood admitting it cannot reach the stack's base. */
 	constexpr int32 IslandBricks = 20;
 
-	/** The region cap: 14 blocks of headroom over the 30-block stack, so grow reaches the whole
-	 *  mechanism, yet greedy (admitting the whole island) stops at course 7. */
+	/** 14 blocks over the stack, so grow reaches it all while greedy stops at course 7. */
 	constexpr int32 RegionCap = 44;
 
 	/** Router-only baseline: a tiny gate cap keeps the entry's SolveLoads off the whole-structure LP. */
@@ -125,11 +88,7 @@ namespace RegionalProverGrowOnContactSupport
 			}
 		}
 
-		/*
-		 * The grounded island: a straight -X run of grounded bricks at Z = half a brick, far enough
-		 * in -X (from X = -500) that no face meets the stack, so MakeInterface writes no cross joint
-		 * and the island is a genuine disconnected foundation.
-		 */
+		// The island: a grounded run from X = -500, far enough that no joint forms with the stack.
 		for (int32 B = 0; B < IslandBricks; ++B)
 		{
 			FPieceBox Box;
@@ -197,11 +156,8 @@ namespace RegionalProverGrowOnContactSupport
 }
 
 /**
- * Grow-on-contact, seeded with a mechanism and a standing grounded island, fells the WHOLE mechanism
- * {1..29} — a strict superset of what the greedy cap-ball reaches, every felled piece inside the
- * whole-structure LP truth, the island never felled, nothing stranded.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Seeded with the stack top and the island, grow-on-contact fells all of {1..29}, only pieces the
+ * whole-structure LP also fells, never the island, and strands nothing. No world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRegionalProverGrowOnContactTest,
@@ -225,10 +181,7 @@ bool FRegionalProverGrowOnContactTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: stack top is piece 29"), F.StackTop, Courses - 1);
 	TestEqual(TEXT("FIXTURE: island starts at piece 30"), F.IslandFirst, Courses);
 
-	/*
-	 * (A) The independent truth: the whole-structure ground-only LP, a different code path. It fells
-	 * every stack course above the grounded base, {1..29}, and stands the island.
-	 */
+	// (A) Independent truth from the whole-structure LP: fells {1..29}, stands the island.
 	FOracleProblem Whole;
 	FString WhyNot;
 	TestTrue(*FString::Printf(TEXT("TRUTH: the whole structure bridges (%s)"), *WhyNot),
@@ -261,11 +214,7 @@ bool FRegionalProverGrowOnContactTest::RunTest(const FString& Parameters)
 			TruthMoving.Contains(Island));
 	}
 
-	/*
-	 * (B) The cap-sufficiency witness: the same flood seeded with only the stack top, at the same cap.
-	 * The island is never reached, so this stack-only flood fells {1..29} in 30 blocks — proof that
-	 * cap 44 is not the limit. Green today and after grow.
-	 */
+	// (B) Cap-sufficiency witness: seeded with the stack top alone, cap 44 fells {1..29}.
 	int32 StackOnlyReleased = 0;
 	int32 StackOnlyStranded = 0;
 	const TArray<int32> StackOnlyFalling =
@@ -284,10 +233,8 @@ bool FRegionalProverGrowOnContactTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * (C) The new behaviour (red until built). Seed both the stack top and the island, at the same
-	 * cap. Grow-on-contact must ignore the grounded island and recover the full reach: fell {1..29},
-	 * release exactly 29, fell no island piece, strand nothing. Today greedy admits all 20 island
-	 * bricks and fells only {7..29} (23), so {1..6} read Supported — the gap this drives.
+	 * (C) Seeded with both, grow must ignore the island and fell {1..29}. Greedy fells only
+	 * {7..29}.
 	 */
 	int32 IslandReleased = 0;
 	int32 IslandStranded = 0;
@@ -310,7 +257,7 @@ bool FRegionalProverGrowOnContactTest::RunTest(const FString& Parameters)
 			IslandReleased),
 		IslandReleased, Courses - 1);
 
-	// SOUNDNESS: every felled piece is one the whole-structure LP also fells (subset of truth).
+	// Soundness: every felled piece is in the LP truth.
 	for (const int32 Piece : IslandFalling)
 	{
 		TestTrue(
@@ -319,7 +266,6 @@ bool FRegionalProverGrowOnContactTest::RunTest(const FString& Parameters)
 			TruthMoving.Contains(Piece));
 	}
 
-	// The grounded island is a genuine foundation — grow must never fell it.
 	for (const int32 Island : F.IslandPieces)
 	{
 		TestFalse(
