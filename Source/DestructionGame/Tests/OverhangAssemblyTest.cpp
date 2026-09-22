@@ -13,158 +13,58 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE FRONT-DOOR OVERHANG ASSEMBLY — SHED_PATH.md Phase C, slice C2, the first concrete piece of
- * the shed's shape, and the acceptance of R-Overhang.
+ * Front-door overhang (SHED_PATH.md Phase C, slice C2; R-Overhang). A timber beam is carried by a
+ * post in compression at the front and a screw fixing in tension at the back, neither sufficient
+ * alone: it stands assembled, and falls when either the post or the anchor brick is removed.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE (R-Overhang, the orchestrator ruling). A wooden overhang over the
- * front door is carried by WOODEN POSTS IN COMPRESSION at the front AND a WALL-FIXING IN TENSION at
- * the back, NEITHER SUFFICIENT ALONE — so it STANDS as assembled, FALLS when the posts are pulled
- * (the fixing alone cannot cantilever it), and FALLS when the wall-fixing (the anchor brick it hangs
- * from) is pulled (the post alone lets it topple off).
+ * 2D X-Z section, four pieces: WallBase (grounded brick pier, X -40..0), WallTop (anchor brick on a
+ * mortar bed), Beam (timber, X -4..196, lapping 4 cm onto WallTop), Post (grounded timber, X 54..66).
+ * Joints: WallTop on WallBase (mortar), Beam on WallTop (Screw, 80 cm2, withdrawal 0.54 MPa is the
+ * weakest link), Beam on Post (DryStone, no tension, 240 cm2).
  *
- * EVERYTHING THIS NEEDS IS ALREADY BUILT AND DIMENSION-INDEPENDENT (2D LP): the Timber C24 material
- * (B1), the connection x material weakest-link bearing so wood-on-brick and post-under-beam contacts
- * carry the right crush (B3), and fastener withdrawal TENSION in the LP (Screw 0.54 MPa via
- * TensileStrengthMPa, confirmed by the hanging test C1). The toy overhang is ~4 pieces, far below the
- * 200-block cap, so the equilibrium LP is the break authority.
+ * The beam centroid (X 96) is outboard of the post (X 60), which makes all three arms work:
+ *   (a) assembled: the back end lifts, so the fixing is in tension, T = W*(c - X_p)/(X_p - X_f);
+ *       its withdrawal capacity exceeds that by ~37x.
+ *   (b) post removed: the 4 cm fixing cannot resist W*(c - X_f); demand is ~2.1x its plastic capacity.
+ *   (c) anchor removed: the beam topples off the post; W*(c - X_p) is ~6x the compression-only
+ *       capacity halfPost*W.
  *
- * =========================================================================================
- * THE FIXTURE — A 2D X-Z CROSS-SECTION. WALL ON THE LEFT (BACK), OVERHANG CANTILEVERING RIGHT.
- * =========================================================================================
- *
- *                                             beam centroid c = X 96
- *                    fixing (Screw, 4 cm)              |
- *                    X in [-4, 0], TENSION             v
- *        WallTop  ##=========================================================+   <- Timber BEAM
- *      +---------+ |                        [ B E A M ]                      |      X in [-4,196]
- *      | WallTop |=+                              |                          |      (over the "door")
- *      +---------+          door opening      +---+---+  post (DryStone
- *      | WallBase|                            | POST  |  bearing, compression)
- *      | (brick, |                            | (wood)|  X in [54,66]
- *      | grounded|                            |       |  grounded on the earth
- *      +=========+                            +=======+
- *         earth                                  earth
- *
- * FOUR PIECES:
- *   - WallBase: ClayBrick, GROUNDED, the shed wall (a pier). X in [-40,0], Z in [0,170].
- *   - WallTop:  ClayBrick, the ANCHOR brick the fixing hangs from; rests on WallBase through a
- *               mortar bed joint. X in [-40,0], Z in [171,181]. Removing it is "remove the wall
- *               bricks the fixing anchors to".
- *   - Beam:     Timber, the overhang. X in [-4,196] (length 200), Z in [182,194] (thick 12). Its
- *               back end LAPS 4 cm onto WallTop; the rest cantilevers out over the door.
- *   - Post:     Timber, GROUNDED, under the front of the beam. X in [54,66] (width 12), Z in [0,181].
- *
- * THREE LIVE JOINTS (all bed joints, normal +Z, single wythe in X-Z — the 2D LP's domain):
- *   - WallBedJoint: WallBase (below) - WallTop (above), GeneralPurposeMortar. Holds the anchor up.
- *   - FixingJoint:  WallTop (below) - Beam (above), SCREW. A 4 cm x 20 cm = 80 cm2 patch, the
- *                   tension tie. Withdrawal is min(Screw 0.54, Timber 23, ClayBrick 2) = 0.54 MPa
- *                   (the screw is the weakest link, so the cross-material pairing leaves the fixing
- *                   a fastener withdrawal, exactly as the hanging test isolates).
- *   - PostJoint:    Post (below) - Beam (above), DRYSTONE (a frictional bearing, compression only,
- *                   no tension). 12 cm x 20 cm = 240 cm2.
- *
- * =========================================================================================
- * THE SIZING IS THE DESIGN WORK (R-Overhang: neither support sufficient alone).
- * =========================================================================================
- *
- * The whole trick is the BEAM CENTROID SITS OUTBOARD OF THE POST (c = 96 > X_post = 60). That single
- * choice makes all three arms come out right, and it is what forces the assembled fixing into TENSION
- * rather than compression:
- *
- *   (a) ASSEMBLED. Two vertical supports, weight outboard of the post, so the beam wants to rotate
- *       about the post with its BACK END LIFTING. The fixing must hold the back down => it is in
- *       TENSION. Statics (fixing tie at X_f, post at X_p, weight W at c):
- *           T_fix = W * (c - X_p) / (X_p - X_f)       (net uplift the fixing resists)
- *           R_post = W + T_fix                         (compression, the post carries more than W)
- *       The fixing's WITHDRAWAL capacity f_t*Conv*A must exceed T_fix -> stands. It does, ~37x, so
- *       the assembled canopy is a comfortable stand, NOT a knife edge.
- *
- *   (b) POSTS REMOVED -> the fixing alone must CANTILEVER the beam. The 4 cm-wide fixing patch has a
- *       tiny lever, so its plastic moment capacity (a compression edge plus a withdrawal-limited
- *       tension edge) is FAR short of the cantilever moment W*(c - X_f):
- *           M_demand  = W * (c - X_f)
- *           M_capacity = d_fix * (W + 2 * f_t*Conv*(A_fix/2))     (d_fix = half the patch width)
- *       M_demand outruns M_capacity ~2.1x -> no admissible equilibrium -> FALLS. This is exactly why
- *       "pull the posts and it drops" is true: a couple of screws cannot cantilever a 2 m canopy.
- *
- *   (c) WALL-FIXING REMOVED (the anchor brick pulled) -> the beam is propped only at the post, weight
- *       outboard, so it TOPPLES off the post. The post bearing carries no tension (DryStone), so its
- *       max restoring moment is compression on the outboard edge only:
- *           M_demand  = W * (c - X_p)
- *           M_capacity = halfPost * W                 (compression-only, one edge)
- *       M_demand outruns it ~6x -> FALLS.
- *
- * NEITHER ALONE: (b) is the fixing alone (fails), (c) is the post alone (fails), (a) is both (stands).
- * That is R-Overhang, made into an equilibrium the LP judges.
- *
- * =========================================================================================
- * WHAT IS ASSERTED (DESIGN.md §4 — mechanism and outcome, never displacement).
- * =========================================================================================
- *
- *   - THE MECHANISM, VIA THE ORACLE. Bridged to the rigid-block LP: assembled must be FEASIBLE
- *     (lambda* >= 1); each removal must be INFEASIBLE (lambda* < 1). On the removals the collapse
- *     MECHANISM (phase-1 dual, gravity-dead) must be present and must NAME THE BEAM as a moving
- *     block — so the fall is a genuine loss of equilibrium of the overhang, not a routing artefact.
- *
- *   - THE OUTCOME, VIA PRODUCTION. After SolveAndBreak (below the cap, so the LP is the authority):
- *     assembled -> the beam reads Supported; each removal -> the beam has lost the earth. Nothing may
- *     be Stranded on a genuine fall. The grounded pieces keep the earth. Displacement is never read.
- *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3). 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is
- * 100*100 = 10000 uu. DELIBERATELY not the production constant, so a wrong conversion fails here.
- * Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside the 980); masses come from the
- * published densities (Timber 0.42 g/cm3, ClayBrick 1.9 g/cm3) times the true volumes.
- *
- * NEEDS A TICKING WORLD: NO. FStructure is arithmetic over a graph; gravity is on (weight = mass*980),
- * everything is connected, and every assertion is on the oracle, the outcome, or solver state. Same
- * footing as the two-load-path, cross-material-bearing and hanging acceptance tests.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Asserted: the LP oracle agrees (removals infeasible, with a certified mechanism that moves the
+ * beam), and production's SolveAndBreak outcome matches with nothing Stranded. Units are spelled
+ * out locally (10000 uu per MPa per cm2) so a wrong production constant fails here.
  */
 namespace OverhangAssemblyTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * UNITS AND MATERIAL DENSITIES. Lengths in cm at Unreal's default 1 uu = 1 cm.
-	 * ================================================================================ */
-
-	/** Structural timber C24, EN 338 mean density. UNITS TRAP: 0.42, never 420. */
+	/** Timber C24, EN 338 mean density. g/cm3: 0.42, never 420. */
 	constexpr double TimberDensityGramsPerCubicCm = 0.42;
 
-	/** Fired clay, the figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu; the 1 N = 100 uu factor is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/** 1 MPa over 1 cm2 is 10000 uu. DELIBERATELY a local literal, not the production constant. */
+	/** 10000 uu per MPa per cm2, a local literal so a wrong production constant fails here. */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
-	/** The single wythe: every piece is this deep on Y, so every joint's Y overlap is full. */
+	/** Every piece is this deep on Y, so every joint's Y overlap is full. */
 	constexpr double WytheCm = 20.0;
 
-	/** A 1 cm mortarless/mortar contact — the separation every bed joint is formed across. */
 	constexpr double JointThicknessCm = 1.0;
 
-	/* ================================================================================
-	 * THE GEOMETRY, as named constants so the hand-derivation below reads from the SAME
-	 * numbers the boxes are built from.
-	 * ================================================================================ */
-
-	/* WallBase: the grounded shed pier. */
+	// WallBase: the grounded pier.
 	constexpr double WallLeftXCm = -40.0;
 	constexpr double WallRightXCm = 0.0;
 	constexpr double WallBaseBottomZCm = 0.0;
 	constexpr double WallBaseTopZCm = 170.0;
 
-	/* WallTop: the anchor brick, one bed joint above WallBase, same footprint. */
+	// WallTop: the anchor brick, one bed joint above WallBase.
 	constexpr double WallTopBottomZCm = WallBaseTopZCm + JointThicknessCm;   // 171
 	constexpr double WallTopTopZCm = WallTopBottomZCm + 10.0;                // 181
 
-	/* Beam: the overhang. Back end laps 4 cm onto WallTop; the rest cantilevers out. */
+	// Beam: back end laps 4 cm onto WallTop.
 	constexpr double BeamLeftXCm = -4.0;
 	constexpr double BeamRightXCm = 196.0;
 	constexpr double BeamBottomZCm = WallTopTopZCm + JointThicknessCm;       // 182
@@ -173,7 +73,7 @@ namespace OverhangAssemblyTestSupport
 	constexpr double BeamLengthXCm = BeamRightXCm - BeamLeftXCm;             // 200
 	constexpr double BeamCentroidXCm = (BeamLeftXCm + BeamRightXCm) / 2.0;   // 96
 
-	/* Post: under the FRONT of the beam, grounded on the earth. */
+	// Post: grounded, under the front of the beam.
 	constexpr double PostLeftXCm = 54.0;
 	constexpr double PostRightXCm = 66.0;
 	constexpr double PostWidthXCm = PostRightXCm - PostLeftXCm;              // 12
@@ -181,7 +81,7 @@ namespace OverhangAssemblyTestSupport
 	constexpr double PostTopZCm = BeamBottomZCm - JointThicknessCm;          // 181
 	constexpr double PostBottomZCm = 0.0;
 
-	/* The fixing patch: the overlap of the beam's back end onto WallTop. */
+	// Fixing patch: the beam's overlap onto WallTop.
 	constexpr double FixingLeftXCm = BeamLeftXCm;                            // -4
 	constexpr double FixingRightXCm = WallRightXCm;                          // 0
 	constexpr double FixingWidthXCm = FixingRightXCm - FixingLeftXCm;        // 4
@@ -190,13 +90,9 @@ namespace OverhangAssemblyTestSupport
 
 	constexpr double PostBearingAreaSqCm = PostWidthXCm * WytheCm;           // 240
 
-	/* ================================================================================
-	 * THE INDEPENDENT STATICS — one rigid beam, moments about a support, against the
-	 * plastic joint capacity. Derived here, NOT mirrored from the LP; the bridged LP is
-	 * the SECOND, independently derived confirmation, called against the built structure.
-	 * ================================================================================ */
+	// Independent hand statics, not mirrored from the LP.
 
-	/** The overhang beam's weight in uu (Timber density x true volume x g). */
+	/** The beam's weight, uu. */
 	double BeamWeightUu()
 	{
 		const double MassKg =
@@ -204,29 +100,27 @@ namespace OverhangAssemblyTestSupport
 		return MassKg * GravityCmPerSecondSquared;
 	}
 
-	/** The fixing's full withdrawal capacity, uu: the screw's f_t over the whole patch. */
+	/** The fixing's withdrawal capacity over the whole patch, uu. */
 	double FixingWithdrawalCapacityUu(double ScrewTensileMPa)
 	{
 		return ScrewTensileMPa * ForceUnitsPerMPaSqCmHere * FixingAreaSqCm;
 	}
 
-	/** (a) ASSEMBLED: the net TENSION the fixing must carry, weight outboard of the post. */
+	/** (a) The tension the fixing carries when assembled. */
 	double AssembledFixingTensionUu()
 	{
 		return BeamWeightUu() * (BeamCentroidXCm - PostCentreXCm) / (PostCentreXCm - FixingCentreXCm);
 	}
 
-	/** (b) POSTS REMOVED: the cantilever moment the fixing alone must resist, about its centre. */
+	/** (b) The cantilever moment about the fixing's centre. */
 	double CantileverDemandUuCm()
 	{
 		return BeamWeightUu() * (BeamCentroidXCm - FixingCentreXCm);
 	}
 
 	/**
-	 * (b) The MOST the 4 cm fixing patch can restore: the fully-plastic couple the LP discretises
-	 * it into — a compression edge (carrying W plus the tension edge's pull) and a tension edge
-	 * limited to the screw withdrawal over its tributary half-area, each a half-width from centre.
-	 * M = d * (n_comp + |n_ten|) with n_comp = W + Cap_half and |n_ten| = Cap_half.
+	 * (b) The fixing's plastic moment capacity: a compression edge and a withdrawal-limited tension
+	 * edge, each a half-width from centre. M = d * (W + 2 * Cap_half).
 	 */
 	double CantileverCapacityUuCm(double ScrewTensileMPa)
 	{
@@ -235,24 +129,17 @@ namespace OverhangAssemblyTestSupport
 		return HalfWidthCm * (BeamWeightUu() + 2.0 * CapHalfUu);
 	}
 
-	/** (c) WALL-FIXING REMOVED: the toppling moment about the post centre, weight outboard. */
+	/** (c) The toppling moment about the post centre. */
 	double ToppleDemandUuCm()
 	{
 		return BeamWeightUu() * (BeamCentroidXCm - PostCentreXCm);
 	}
 
-	/**
-	 * (c) The MOST the post bearing can restore: DryStone carries NO tension, so the couple is
-	 * compression on the outboard edge only, at most W at a half-post-width lever.
-	 */
+	/** (c) The post's capacity: no tension, so at most W at a half-post-width lever. */
 	double ToppleCapacityUuCm()
 	{
 		return (PostWidthXCm / 2.0) * BeamWeightUu();
 	}
-
-	/* ================================================================================
-	 * THE FIXTURE.
-	 * ================================================================================ */
 
 	struct FOverhang
 	{
@@ -282,7 +169,7 @@ namespace OverhangAssemblyTestSupport
 			* (Box.ExtentCm.X * 2.0) * (Box.ExtentCm.Y * 2.0) * (Box.ExtentCm.Z * 2.0) / 1000.0;
 	}
 
-	/** Lay the wall, anchor brick, overhang beam and post, tag materials, and join the three beds. */
+	/** Lay the four pieces, set materials, and join the three bed joints. */
 	void Build(FOverhang& Out)
 	{
 		const FPieceBox WallBaseBox = MakeBox(WallLeftXCm, WallRightXCm, WallBaseBottomZCm, WallBaseTopZCm);
@@ -306,21 +193,18 @@ namespace OverhangAssemblyTestSupport
 
 		FConnection Joint;
 
-		/* WallTop bears on WallBase — an ordinary mortar bed joint holding the anchor up. */
 		if (MakeInterface(Out.WallBase, WallBaseBox, Out.WallTop, WallTopBox,
 				JointThicknessCm, GeneralPurposeMortar, Joint))
 		{
 			Out.WallBedJoint = Out.Structure.AddConnection(Joint);
 		}
 
-		/* The fixing: the beam's back end screwed onto WallTop. Tension-capable (withdrawal). */
 		if (MakeInterface(Out.WallTop, WallTopBox, Out.Beam, BeamBox,
 				JointThicknessCm, Screw, Joint))
 		{
 			Out.FixingJoint = Out.Structure.AddConnection(Joint);
 		}
 
-		/* The post bears UNDER the front of the beam — a frictional compression bearing, no tension. */
 		if (MakeInterface(Out.Post, PostBox, Out.Beam, BeamBox,
 				JointThicknessCm, DryStone, Joint))
 		{
@@ -341,7 +225,7 @@ namespace OverhangAssemblyTestSupport
 		return Stranded;
 	}
 
-	/** True when a live piece has lost every path to the earth — the outcome a dropped overhang shows. */
+	/** True when a live piece has no path to the earth. */
 	bool HasLostTheEarth(const FStructure& S, int32 Piece)
 	{
 		if (S.IsPieceRemoved(Piece))
@@ -357,7 +241,7 @@ namespace OverhangAssemblyTestSupport
 		return Support == EPieceSupport::Grounded || Support == EPieceSupport::Supported;
 	}
 
-	/** The oracle block that came from a given FStructure piece, via the bridge provenance. */
+	/** The oracle block built from this piece. */
 	int32 OracleBlockOfPiece(const RigidBlockOracle::FOracleProblem& Problem, int32 Piece)
 	{
 		for (int32 B = 0; B < Problem.PieceOfBlock.Num(); ++B)
@@ -371,11 +255,7 @@ namespace OverhangAssemblyTestSupport
 	}
 }
 
-/**
- * THE OVERHANG STANDS ON POSTS-PLUS-FIXING AND FALLS WHEN EITHER IS PULLED — NEITHER ALONE SUFFICIENT.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
- */
+/** The overhang stands on post plus fixing and falls when either is removed. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOverhangAssemblyTest,
 	"DestructionGame.Acceptance.Overhang.CarriedByPostsInCompressionAndAWallFixingInTension",
@@ -386,11 +266,7 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace OverhangAssemblyTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITIONS ON THE STRENGTH BASIS — the whole verdict turns on
-	 * these, so they are pinned to the published figures the sizing was
-	 * derived against rather than read from the profiles.
-	 * ------------------------------------------------------------------ */
+	// Pin the published strengths the sizing was derived against.
 
 	TestEqual(TEXT("FIXTURE: the wall-fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -403,21 +279,13 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
-	/*
-	 * The fixing is a fastener WITHDRAWAL: the weakest link on the tension axis is min(Screw 0.54,
-	 * Timber 23, ClayBrick 2) = the screw's 0.54. So the cross-material wiring leaves the wall-fixing
-	 * exactly the screw's withdrawal, which is the tension capability the hanging test isolates.
-	 */
+	// Weakest link on tension: min(Screw 0.54, Timber 23, ClayBrick 2) = the screw's withdrawal.
 	const double FixingTensileMPa = FMath::Min3(
 		Screw.TensileStrengthMPa, Timber.Strength.TensileStrengthMPa, ClayBrick.Strength.TensileStrengthMPa);
 	TestEqual(TEXT("FIXTURE: the fixing's weakest-link withdrawal is the screw's 0.54 MPa"),
 		FixingTensileMPa, 0.54);
 
-	/* ------------------------------------------------------------------ *
-	 * THE "NEITHER ALONE SUFFICIENT" SIZING, HAND-DERIVED. Assembled the
-	 * fixing carries a comfortable tension; the fixing ALONE cannot
-	 * cantilever the beam and the post ALONE cannot stop it toppling.
-	 * ------------------------------------------------------------------ */
+	// Hand-derived sizing: each support alone is insufficient, together comfortable.
 
 	const double W = BeamWeightUu();
 	const double AssembledTension = AssembledFixingTensionUu();
@@ -454,10 +322,7 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 			"capacity (%.10g) — the post ALONE lets it topple"), ToppleDemand, ToppleCap),
 		ToppleDemand > 1.5 * ToppleCap);
 
-	/* ------------------------------------------------------------------ *
-	 * THE THREE ARMS. Each builds a fresh overhang, removes the arm's
-	 * piece(s), then reads the oracle mechanism and the production outcome.
-	 * ------------------------------------------------------------------ */
+	// Each arm builds a fresh overhang, removes its piece, then reads the oracle and production.
 
 	enum class EArm : uint8 { Assembled, PostsRemoved, FixingRemoved };
 
@@ -485,7 +350,6 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		/* Topology preconditions on the freshly-built (pre-removal) structure — only once. */
 		if (A.Arm == EArm::Assembled)
 		{
 			TestEqual(TEXT("FIXTURE: four pieces — wall base, anchor brick, overhang beam, post"),
@@ -504,7 +368,6 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 				Fx.Structure.GetConnection(Fx.PostJoint).InterfaceAreaSqCm, PostBearingAreaSqCm);
 		}
 
-		/* Pull the arm's piece(s). */
 		if (A.Arm == EArm::PostsRemoved)
 		{
 			Fx.Structure.RemovePiece(Fx.Post);
@@ -514,7 +377,6 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 			Fx.Structure.RemovePiece(Fx.WallTop);
 		}
 
-		/* ---- THE MECHANISM, VIA THE ORACLE. ---- */
 		RigidBlockOracle::FOracleProblem Problem;
 		FString BridgeWhy;
 		const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(Fx.Structure, Problem, BridgeWhy);
@@ -558,11 +420,7 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 						A.Label, Live.Lambda),
 					Live.bAnswered && Live.Lambda < 0.9);
 
-				/*
-				 * THE COLLAPSE MECHANISM must NAME THE BEAM as a moving block, so the fall is a genuine
-				 * loss of equilibrium of the overhang — not a routing artefact wearing its clothes. The
-				 * mechanism lives on the infeasible arm of the FEASIBILITY formulation (gravity dead).
-				 */
+				// The gravity-dead mechanism must move the beam, so the fall is real, not a routing artefact.
 				RigidBlockOracle::FOracleProblem Dead = Problem;
 				Dead.bGravityIsLive = false;
 				const RigidBlockOracle::FOracleResult DeadR = RigidBlockOracle::SolveRigidBlock(Dead);
@@ -588,7 +446,7 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* ---- THE OUTCOME, VIA PRODUCTION. Below the 200-block cap, the LP is the break authority. ---- */
+		// Below the 200-block cap, so the LP is the break authority.
 		const int32 Passes = Fx.Structure.SolveAndBreak();
 
 		const EPieceSupport BeamSupport = Fx.Structure.GetPieceSupport(Fx.Beam);
@@ -615,7 +473,6 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 					"support %d"), A.Label, static_cast<int32>(BeamSupport)),
 				static_cast<int32>(BeamSupport), static_cast<int32>(EPieceSupport::Supported));
 
-			/* When it stands, the post is genuinely there and grounded, carrying the compression path. */
 			TestTrue(
 				*FString::Printf(TEXT("%s: the grounded post keeps the earth (the compression support)"), A.Label),
 				Fx.Structure.GetPieceSupport(Fx.Post) == EPieceSupport::Grounded);
@@ -627,7 +484,7 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 					"R-Overhang says neither support holds it alone"), A.Label, static_cast<int32>(BeamSupport)),
 				HasLostTheEarth(Fx.Structure, Fx.Beam));
 
-			/* The remaining single support keeps the earth — only the overhang is ever at stake. */
+			// The remaining support keeps the earth.
 			if (A.Arm == EArm::PostsRemoved)
 			{
 				TestTrue(

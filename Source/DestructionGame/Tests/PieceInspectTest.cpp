@@ -8,38 +8,22 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. The world harness is NOT redeclared here: it lives in
- * Tests/BrickWorldTestSupport.h and four test files share it, because a second copy of a
- * floor height and a tick length is two fixtures that drift.
- */
+// Named, not anonymous: anonymous namespaces from different files collide in a unity build.
 namespace PieceInspectTestSupport
 {
 	/**
-	 * How far along Y a ray starts and ends, either side of the wall.
-	 *
-	 * A brick is 10.25 cm deep and a wall is centred on Y = 0, so +/- 100 cm is far outside it
-	 * on both sides and the ray crosses the whole thickness. Along Y rather than X or Z so
-	 * nothing else in the wall is in the way and the answer is unambiguous. Same choice, and
-	 * the same reason, as Tests/PieceClickTest.cpp.
+	 * Ray half-length along Y either side of the wall (10.25 cm deep, centred on Y 0). Along Y so
+	 * nothing else in the wall is in the way, as in Tests/PieceClickTest.cpp.
 	 */
 	constexpr double InspectReachCm = 100.0;
 
-	/** Far from the wall and above the slab, so a ray straight down hits absolutely nothing. */
+	/** Far from the wall and off the slab, so a ray down hits nothing. */
 	const FVector InspectEmptyAirCm(5000.0, 5000.0, 300.0);
 
-	/**
-	 * A point over the floor and well clear of the wall.
-	 *
-	 * The slab now genuinely straddles the origin (see BrickWorldTestSupport::SpawnFloor —
-	 * it used to sit entirely in the +X +Y quadrant), so this needs no side to be chosen and
-	 * is simply 300 cm out in Y from a wall that is 10.25 cm deep.
-	 */
+	/** Over the floor, 300 cm clear of the wall. */
 	const FVector InspectFloorPointCm(0.0, 300.0, 0.0);
 
-	/** The Delete row, looked up by label so nothing hard-codes a position in the table. */
+	/** An action row looked up by label, not table position. */
 	const FPieceAction* FindInspectAction(const TCHAR* Label)
 	{
 		for (const FPieceAction& Action : AllPieceActions())
@@ -53,7 +37,7 @@ namespace PieceInspectTestSupport
 		return nullptr;
 	}
 
-	/** What came back, so a failure reads without a debugger. */
+	/** Rows as text, for failure messages. */
 	FString DescribeInspectRows(TArrayView<const FPieceMenuRow> Rows)
 	{
 		if (Rows.Num() == 0)
@@ -78,55 +62,15 @@ namespace PieceInspectTestSupport
 }
 
 /**
- * THE PLAYER CONTROLLER TURNS A RAY INTO THE MENU FOR THE BRICK IT HIT, DISMISSES IT WHEN THE
- * RAY HITS NOTHING, AND THE ROW IT PRESENTED COMMITS AGAINST THAT VERY BRICK.
+ * The player controller turns a ray into the menu for the brick it hit, dismisses it on a miss,
+ * and the presented row commits against that brick. On the controller, not the pawn, since a pawn
+ * binding disappears with the pawn.
  *
- * ON THE CONTROLLER, NOT THE PAWN, and this is the test that pins it. The controller already
- * owns the mapping contexts, it outlives any pawn, and it is what carries the cursor and the
- * deprojection — a binding on the pawn goes away with the pawn, which for a spectator that
- * can be re-possessed is a menu that stops opening for no visible reason.
- *
- * A RAY IN RATHER THAN A CLICK, WHICH IS WHERE THE SEAM IS DRAWN AND WHY. Turning the cursor
- * into a world ray needs a viewport, and a headless run has none; everything after that —
- * trace, resolve, build the rows, present or dismiss — needs only a world. So THIS is the
- * half that is asserted, and the deprojection itself is deliberately untested. So is whether
- * a Slate widget appeared: that costs a viewport and a widget tree to learn nothing the rows
- * do not already say, and Tests/PieceMenuTest.cpp owns the rows.
- *
- * PER PIECE, NOT ONCE. The defect that matters here is a wall spawned in the right places
- * with the wrong refs — every brick present, every brick the right size, and inspecting one
- * offers a menu that deletes another. A single inspection cannot see it; one per brick can,
- * because the wrong answer has to be wrong for a particular brick. Tests/PieceClickTest.cpp
- * makes the same argument about TracePiece; the overlap is in the fixture, not the subject.
- *
- * DISMISSAL IS ASSERTED ON ITS OWN, and it is the half that is easy to leave out. A handler
- * that opens a menu on a hit and simply returns on a miss leaves the previous brick's menu on
- * screen naming a brick the player is no longer pointing at — and then a click on Delete
- * removes it. Nothing about that looks like a bug until a wall loses a brick nobody chose.
- *
- * AND THE MISS ROWS ARE NOW ASSERTED AGAINST THE PRESENTER, NOT ONLY AGAINST THE RETURN VALUE,
- * which is what makes them able to fail at all. CURRENT_STATE.md records that the two miss
- * rows below were structurally redundant: three independent guards each produce an empty list
- * for a miss, so no single mutation of the wire could make one return rows. What they were
- * written to guard against is a STATEFUL presenter — and the moment something remembers the
- * last menu, "open on a hit, return on a miss" becomes writable and is the obvious shape to
- * write. So a miss must now leave the presenter EMPTY as well as return nothing, and the
- * per-brick loop asserts the presenter is showing that brick's rows so that there is genuinely
- * a menu up for the miss to fail to dismiss.
- *
- * THE PRESENTING BELONGS TO InspectAlongRay RATHER THAN TO THE INPUT HANDLER, and that is the
- * placement this test pins. The handler is the one part of the chain no test can reach, so it
- * must stay a deprojection plus one call; putting "and then show it" in the handler would move
- * the dismiss-on-miss decision — the exact thing above — into the untestable half.
- *
- * THIS CONTROLLER HAS NO ULocalPlayer, DELIBERATELY. It is spawned bare, so there is no
- * Enhanced Input subsystem to remove a look context from and no cursor to show. Presenting
- * must therefore work rather than merely not crash without one;
- * DestructionGame.World.Menu.PieceMenuPresenterState owns the half that needs a local player.
- *
- * NEEDS A TICKING WORLD: it needs a WORLD — actors to spawn into, a physics scene for the
- * trace, a controller to spawn — but it deliberately never ticks one. Nothing here is about
- * anything falling.
+ * A ray rather than a click: deprojecting the cursor needs a viewport, so only trace-onwards is
+ * tested. Per piece, because a wall with swapped refs offers a perfect menu that deletes the wrong
+ * brick. A miss must also clear the presenter, or the last brick's menu stays up and Delete removes
+ * a brick nobody is pointing at. Presenting lives in InspectAlongRay, not the untestable input
+ * handler. No ULocalPlayer (PieceMenuPresenterState covers that half). Needs a world, never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceInspectOpensTheMenuTest,
@@ -149,12 +93,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 
 	const FRunningBondSpec Spec = WallSpec();
 
-	/*
-	 * THE REFERENCE LAYOUT IS LAID SEPARATELY, so the points inspected at come from the
-	 * producer rather than from whatever the subsystem happened to spawn. A spawner that put
-	 * every brick at the origin would otherwise be inspected at the origin and agree with
-	 * itself. Same reasoning as Tests/PieceClickTest.cpp.
-	 */
+	// Inspect points come from a separately laid reference, so a bad spawner cannot agree with itself.
 	FBrickLayout Reference;
 
 	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
@@ -218,9 +157,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * ONE: INSPECTING BRICK k OFFERS BRICK k'S MENU, FOR EVERY BRICK IN THE WALL.
-	 */
+	// Inspecting brick k offers brick k's menu, for every brick.
 	for (int32 Piece = 0; Piece < Reference.Boxes.Num(); ++Piece)
 	{
 		const FPieceBox& Box = Reference.Boxes[Piece];
@@ -229,10 +166,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 			FVector(Box.CentreCm.X, Box.CentreCm.Y - InspectReachCm, Box.CentreCm.Z),
 			FVector(Box.CentreCm.X, Box.CentreCm.Y + InspectReachCm, Box.CentreCm.Z));
 
-		/*
-		 * THE EXPECTATION IS WHAT THE TABLE ALLOWS, ASKED FOR SEPARATELY, so this stays true
-		 * the day a second action lands rather than being a hard-coded one-row menu.
-		 */
+		// Expect what the table allows, so a new action does not break this.
 		FPieceRef ExpectedRef;
 		ExpectedRef.StructureId = StructureId;
 		ExpectedRef.PieceIndex = Piece;
@@ -262,21 +196,13 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 					Piece, Index, StructureId, Rows[Index].Ref.StructureId),
 				Rows[Index].Ref.StructureId, StructureId);
 
-			/*
-			 * THE ROW'S REF IS THE WHOLE POINT OF INSPECTING PER PIECE. A wall whose bricks
-			 * carry each other's refs offers a perfect menu on every brick and deletes the
-			 * wrong one, and 1,220 identical bricks make that undetectable by eye.
-			 */
 			TestEqual(
 				FString::Printf(TEXT("inspecting piece %d: row %d should name piece %d, got %d"),
 					Piece, Index, Piece, Rows[Index].Ref.PieceIndex),
 				Rows[Index].Ref.PieceIndex, Piece);
 		}
 
-		/*
-		 * AND THE ROWS ARE ACTUALLY PRESENTED, not merely returned. Handing them back is what
-		 * makes this testable; putting them on screen is what makes it a menu.
-		 */
+		// Presented, not merely returned.
 		const TArrayView<const FPieceMenuRow> Shown = Controller->GetShownPieceMenuRows();
 
 		TestTrue(
@@ -305,9 +231,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * TWO: A RAY THAT HIT NOTHING DISMISSES THE MENU RATHER THAN LEAVING THE LAST ONE UP.
-	 */
+	// A ray that hits nothing dismisses the menu.
 	struct FMissCase
 	{
 		const TCHAR* Description;
@@ -330,12 +254,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 
 	for (const FMissCase& Miss : Misses)
 	{
-		/*
-		 * A MENU IS UP GOING INTO EVERY MISS, and that is what gives the two rows below
-		 * something to fail at. The loop above left one on screen; re-showing here makes the
-		 * precondition explicit rather than depending on the order of the file, and it is
-		 * asserted, because a miss that dismisses nothing is not evidence of anything.
-		 */
+		// Put a menu up first, so the miss has something to dismiss.
 		Controller->InspectAlongRay(
 			FVector(Reference.Boxes[0].CentreCm.X, Reference.Boxes[0].CentreCm.Y - InspectReachCm, Reference.Boxes[0].CentreCm.Z),
 			FVector(Reference.Boxes[0].CentreCm.X, Reference.Boxes[0].CentreCm.Y + InspectReachCm, Reference.Boxes[0].CentreCm.Z));
@@ -351,11 +270,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 				Miss.Description, *DescribeInspectRows(Rows)),
 			Rows.Num(), 0);
 
-		/*
-		 * THE ROW THAT CAN ACTUALLY FAIL. Returning nothing is guarded three times over
-		 * already; leaving the last brick's menu on screen is not guarded at all until
-		 * something remembers it, which is what the widget half now does.
-		 */
+		// The return value is guarded three times over; the presenter is what can actually fail.
 		TestTrue(
 			*FString::Printf(TEXT("%s must take the previous brick's menu down, it still shows [%s]"),
 				Miss.Description, *DescribeInspectRows(Controller->GetShownPieceMenuRows())),
@@ -364,11 +279,8 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THREE: THE ROW THAT WAS PRESENTED COMMITS AGAINST THE BRICK IT NAMED, AND ONLY THAT ONE.
-	 *
-	 * This is what makes a row worth presenting at all: the pair it carries is exactly the
-	 * pair UDestructionStructureSubsystem::CommitPieceAction takes, so a menu built here and
-	 * chosen later needs nothing remembered on the side.
+	 * The presented row commits against the brick it named, and only that one. A row carries exactly
+	 * what CommitPieceAction takes.
 	 */
 	constexpr int32 InspectedPiece = 0;
 
@@ -422,10 +334,7 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 			IsValid(Bricks[Piece]));
 	}
 
-	/*
-	 * AND INSPECTING THE HOLE IT LEFT OFFERS NOTHING. The actor is gone, so the ray misses —
-	 * the same staleness RunPieceAction's re-resolve exists for, seen from the presenter's end.
-	 */
+	// Inspecting the hole it left offers nothing.
 	{
 		const TArray<FPieceMenuRow> Rows = Controller->InspectAlongRay(
 			FVector(ChosenBox.CentreCm.X, ChosenBox.CentreCm.Y - InspectReachCm, ChosenBox.CentreCm.Z),

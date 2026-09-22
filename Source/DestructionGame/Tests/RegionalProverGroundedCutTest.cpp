@@ -12,34 +12,15 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The regional prover's grounded-boundary cut: a region posed with a one-hop ring of
- * interior pieces held grounded rather than excluded. A characterisation net, green on
- * arrival — no production code to write for it; its value is catching a future
- * regression (proven below by mutation).
+ * The regional prover's grounded-boundary cut: a region posed with a one-hop ring held grounded
+ * rather than excluded. A characterisation net, green on arrival.
  *
- * The plan sketched teeth where a GROUNDED pose falls while the FREE (ring-excluded) pose
- * stands — impossible in this model. A grounded boundary block writes no equilibrium rows
- * and carries no weight (a perfect reaction), so the grounded pose's admissible-force set
- * is always a superset of the free pose's: grounded feasibility ⊇ free feasibility always.
+ * A grounded boundary is a perfect reaction, so grounded feasibility is a superset of free
+ * feasibility. A grounded anchor can therefore hide a real collapse, which is why the prover only
+ * overrides toward Falling (REGIONAL_PROVER_PLAN.md §2); arm C shows that contrast.
  *
- * The realizable contrast (arm C below) has the opposite polarity: on a region that owns
- * its own ground, a grounded ring sitting above it can be a real load-bearing anchor —
- * grounded it stands, free it falls. That is why the prover must never read "stands" from
- * a grounded pose: a grounded anchor can hide a genuine collapse, so the override is
- * one-directional, toward Falling only (REGIONAL_PROVER_PLAN.md §2).
- *
- * Fixture: the 30-course, 10 cm/course mortared leaning stack (LeaningStackAcceptanceTest's
- * row-3 FALLS rung). A grounded cut's interior behaves as a shorter stack grounded at that
- * cut, whose bottom-joint bond-tension demand grows with the square of the interior course
- * count, so a tall enough interior still topples. At cap 15, seed {29}, the interior is the
- * top 14 courses {16..29} and it falls; the whole-structure ground-only LP (a different code
- * path) fells {1..29} — the region's felled set is a genuine subset of the truth.
- *
- * Assert on mechanism, never displacement: which pieces read Falling, the released count,
- * subset-of-truth, 0 stranded, and the grounded-vs-free feasibility outcomes.
- *
- * No ticking world needed (pure FOracleProblem solves and FStructure queries). Units
- * derived here, never imported. Named namespace, not anonymous.
+ * Fixture: the 30-course leaning stack (10 cm per course, mortared). At cap 15, seed {29}, the
+ * interior {16..29} falls, a subset of the whole-structure LP's {1..29}.
  */
 namespace RegionalProverGroundedCutSupport
 {
@@ -54,7 +35,7 @@ namespace RegionalProverGroundedCutSupport
 	constexpr double BedJointThicknessCm = 1.0;
 	constexpr double CoursePitchCm = BrickHeightCm + BedJointThicknessCm;
 
-	/** Density-first multiplication order — the PieceMassKg contract; 2.72163125 kg. */
+	/** Density first, as in PieceMassKg: 2.72163125 kg. */
 	constexpr double BrickMassKg =
 		ClayDensityGramsPerCubicCm * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
@@ -97,7 +78,7 @@ namespace RegionalProverGroundedCutSupport
 		}
 	}
 
-	/** Pose R + B (feasibility, first-crack) through the grounded-boundary bridge and read outcome. */
+	/** Pose region + grounded boundary (feasibility, first-crack) and return the outcome. */
 	RigidBlockOracle::EOracleOutcome PoseOutcome(
 		const FStructure& S, const TSet<int32>& Region, const TSet<int32>& Boundary, int32& OutMoved)
 	{
@@ -131,11 +112,8 @@ namespace RegionalProverGroundedCutSupport
 }
 
 /**
- * The grounded cut fells the interior sub-stack, soundly: seed {29}, cap 15 releases
- * exactly the top 14 courses {16..29}, a subset of the whole-structure LP's truth
- * {1..29}, nothing is stranded, and the grounding is proven load-bearing by the
- * grounded-vs-free contrast on a region that owns its ground. No ticking world needed;
- * see the file header.
+ * Seed {29}, cap 15 releases exactly {16..29}, a subset of the LP truth, with nothing stranded;
+ * and the grounded ring is shown to be load-bearing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRegionalProverGroundedCutTest,
@@ -156,7 +134,7 @@ bool FRegionalProverGroundedCutTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("FIXTURE: the stack has complete geometry"),
 		Stack.Structure.HasCompleteGeometry());
 
-	// (A) The independent truth — the whole-structure ground-only LP, a different code path.
+	// (A) Independent truth: the whole-structure ground-only LP.
 	FOracleProblem WholeProblem;
 	FString WhyNot;
 
@@ -181,7 +159,6 @@ bool FRegionalProverGroundedCutTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* Every course above the grounded base loses the earth: truth is {1..29}. */
 	TestEqual(
 		*FString::Printf(TEXT("TRUTH: the whole-structure LP fells every course above the base (%d)"),
 			TruthMoving.Num()),
@@ -189,21 +166,14 @@ bool FRegionalProverGroundedCutTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("TRUTH: the grounded base is not in the moving set"), TruthMoving.Contains(0));
 
 	/*
-	 * (B) The grounded cut through the production entry point: seed {29}, cap 15.
-	 *
-	 * Why the interior is {16..29}, not {15..29}: the flood bounds region UNION
-	 * grounded-boundary <= cap (REGIONAL_PROVER_PLAN.md §1). With cap 15 it holds the 15th
-	 * block out as the one-hop grounded ring B = {15}, posing a 14-block interior
-	 * R = {16..29} so |R∪B| = 15 fits the cap exactly — rather than a 15-block interior
-	 * {15..29} on ring {14}, which would be 16 blocks. Piece 15 is now the grounded
-	 * boundary: it reads Supported and never moves; the 14 interior courses above it fall.
+	 * (B) The cap bounds region ∪ boundary (REGIONAL_PROVER_PLAN.md §1), so cap 15 gives interior
+	 * {16..29} on grounded ring {15}.
 	 */
 	const int32 Cap = 15;
 	const TArray<int32> Seed = { 29 };
 
 	const int32 Released = Stack.Structure.SolveAndBreak_WithRegionalProver(Seed, Cap);
 
-	/* The released set: exactly the top 14 courses {16..29} (piece 15 is the grounded ring), each reading Falling. */
 	TArray<int32> Falling;
 	int32 Stranded = 0;
 	for (int32 Piece = 0; Piece < Stack.Structure.NumPieces(); ++Piece)
@@ -239,7 +209,6 @@ bool FRegionalProverGroundedCutTest::RunTest(const FString& Parameters)
 			Stack.Structure.GetPieceSupport(Piece), EPieceSupport::Falling);
 	}
 
-	/* SOUNDNESS: every felled piece is one the whole-structure LP also fells (subset of truth). */
 	for (const int32 Piece : Falling)
 	{
 		TestTrue(
@@ -256,14 +225,8 @@ bool FRegionalProverGroundedCutTest::RunTest(const FString& Parameters)
 		Stranded, 0);
 
 	/*
-	 * (C) Grounding is load-bearing — the realizable contrast (see the file header for why
-	 * the plan's inverted "grounded Falls / free Stands" teeth are impossible). On
-	 * region{0..14}, which owns its ground at piece 0, the ring {15} is a top anchor:
-	 * grounded it Stands, free it Falls.
-	 *
-	 * On a fresh stack, deliberately: arm (B) is destructive — the prover severs the
-	 * joints its mechanism opens, including the 14-15 bed joint — so posing region{0..14}
-	 * against the mutated structure would find that top anchor already disconnected.
+	 * (C) On region {0..14}, which owns its ground, ring {15} is a top anchor: grounded it stands,
+	 * free it falls. A fresh stack, because arm (B) severed the 14-15 joint.
 	 */
 	FStack Fresh;
 	LayStack(Fresh);

@@ -8,65 +8,34 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous. An anonymous namespace here is the same
- * namespace as an anonymous one in any other test file the moment a unity build
- * merges the two translation units, which is a redefinition error waiting for
- * UBT's adaptive unity to stop keeping them apart. See CURRENT_STATE.md.
- *
- * WHY THE PROFILES ARE READ THROUGH A REFERENCE rather than copied into scalar
- * constants at namespace scope: the profiles live in another translation unit,
- * and copying their fields here would be a dynamic initialiser reading across
- * TUs. Binding a reference to an object with static storage duration is constant
- * initialisation, so it is safe whatever the order; the field reads then happen
- * inside RunTest, long after everything is initialised.
+ * Named, not anonymous: anonymous namespaces from different test files collide in a unity
+ * build. Profiles are bound by reference, not copied, to avoid cross-TU static init order;
+ * the field reads happen inside RunTest.
  */
 namespace ConnectionStrengthTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Structural concrete, the calibration baseline DESIGN.md asks for. NOW THE
-	 * SHARED PROFILE rather than a private copy of the figures: retuning concrete
-	 * in Core/Profiles retunes it here, which is exactly what three divergent
-	 * private copies could not do.
-	 *
-	 * Compression dominates by design — concrete is roughly five times stronger in
-	 * shear resistance terms and ten times in tension. That spread is the whole
-	 * point of the directional model.
-	 *
-	 * DELIBERATELY UNCOUPLED: the material profile's friction coefficient is zero,
-	 * and that is a property of the data rather than of this fixture. A material is
-	 * not a sliding interface, so with mu = 0 the Mohr-Coulomb shear capacity
-	 * collapses to plain cohesion and the three axes stay strictly independent.
-	 * Every expectation in the Utilisation and DirectionalAsymmetry tests below is
-	 * therefore a regression guard proving that adding friction coupling did not
-	 * disturb the uncoupled case — which is also the correct model for mechanical
-	 * fasteners like bolts and screws.
-	 *
-	 * Coupled behaviour is covered separately in the FrictionCoupling test, using
-	 * the mortar and dry stone connection profiles.
+	 * Structural concrete (the DESIGN.md calibration baseline), read from the shared profile.
+	 * Its friction coefficient is zero, so shear capacity is plain cohesion and the three axes
+	 * stay independent. FrictionCoupling covers the coupled case.
 	 */
 	const FConnectionStrength& ConcreteUncoupled = StructuralConcrete.Strength;
 
-	/** One square centimetre keeps the arithmetic legible. */
 	constexpr double UnitAreaSqCm = 1.0;
 
 	/**
-	 * Force, in Unreal units, that loads UnitAreaSqCm to the given stress.
-	 *
-	 * Spelled out here rather than reusing the production constant so the test
-	 * fails if that constant is wrong, instead of agreeing with it.
-	 * 1 N = 100 uu, 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2.
+	 * Force (uu) that loads UnitAreaSqCm to the given stress. Spelled out rather than using the
+	 * production constant, so a wrong constant fails here: 1 N = 100 uu, 1 cm2 = 100 mm2 ->
+	 * 10000 uu per MPa per cm2.
 	 */
 	constexpr double ForceForMPa(double MPa)
 	{
 		return MPa * 100.0 * 100.0 * UnitAreaSqCm;
 	}
 
-	/**
-	 * Built at runtime through volatile locals so the optimiser cannot fold them
-	 * into constants, which would let the very values under test disappear.
-	 */
+	// Volatile so the optimiser cannot fold the values under test away.
 	double MakeNaN()
 	{
 		volatile double Zero = 0.0;
@@ -83,45 +52,28 @@ namespace ConnectionStrengthTestSupport
 	FConnectionLoad TensionOf(double Force) { FConnectionLoad L; L.Tension = Force; return L; }
 	FConnectionLoad ShearOf(double Force) { FConnectionLoad L; L.Shear = Force; return L; }
 
-	// --- the standard brick, for the moment cases ----------------------------
-
 	/*
-	 * DESIGN.md's standard clay brick, 21.5 x 10.25 x 6.5 cm at 1.9 g/cm3.
-	 *
-	 * DENSITY FIRST IN THE PRODUCT, matching Layout's PieceMassKg: that ordering
-	 * lands exactly on 2.72163125 kg while volume-first lands one ulp low. Nothing
-	 * here is asserted to the ulp, but there is no reason to spell the arithmetic
-	 * in the order that is known to drift.
+	 * DESIGN.md's standard clay brick, 21.5 x 10.25 x 6.5 cm at 1.9 g/cm3. Density first, as in
+	 * Layout's PieceMassKg, which lands exactly on 2.72163125 kg (volume-first is one ulp low).
 	 */
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
 	constexpr double BrickHeightCm = 6.5;
 	constexpr double BrickMassKg = 1.9 * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
-	/** 980 cm/s2 — the solver's gravity, in the cm world 1 uu = 1 cm gives us. */
+	/** 980 cm/s2, the solver's gravity. */
 	constexpr double BrickWeightUu = BrickMassKg * 980.0;
 
-	/**
-	 * Elastic section modulus of a rectangle, cm3.
-	 *
-	 * For a rectangle 2*HalfAlong wide and 2*HalfAcross deep, bending across the
-	 * second axis: I = (2*HalfAlong)*(2*HalfAcross)^3/12 and the outermost fibre
-	 * sits at HalfAcross, so W = I/c = (4/3)*HalfAlong*HalfAcross^2. Ordinary beam
-	 * theory rather than a code figure, and said so.
-	 */
+	/** Elastic section modulus of a rectangle bending across its second axis, cm3: W = (4/3)*HalfAlong*HalfAcross^2. */
 	constexpr double SectionModulusCm3(double HalfAlongCm, double HalfAcrossCm)
 	{
 		return (4.0 / 3.0) * HalfAlongCm * HalfAcrossCm * HalfAcrossCm;
 	}
 
 	/*
-	 * THE HEAD JOINT — the vertical face between two bricks in a course, 10.25 wide
-	 * by 6.5 tall. A brick hanging off one of these is what stands in the game
-	 * today and should not.
-	 *
-	 * Its in-plane axes are the wall thickness (u, half-extent 5.125) and the brick
-	 * height (v, half-extent 3.25). A brick hanging off the end leans about u, so
-	 * the fibre that opens is at the top of the joint, 3.25 cm up.
+	 * Head joint: the vertical face between two bricks in a course, 10.25 wide by 6.5 tall.
+	 * In-plane axes are wall thickness (u, half 5.125) and brick height (v, half 3.25). A
+	 * hanging brick leans about u, opening the top fibre 3.25 cm up.
 	 */
 	constexpr double HeadJointAreaSqCm = BrickWidthCm * BrickHeightCm;
 	constexpr double HeadJointModulusUCm3 = SectionModulusCm3(BrickWidthCm / 2.0, BrickHeightCm / 2.0);
@@ -131,12 +83,8 @@ namespace ConnectionStrengthTestSupport
 	constexpr double HeadJointLeverArmCm = BrickLengthCm / 2.0;
 
 	/*
-	 * THE HALF-OVERHANGING BED PATCH — a brick corbelled half its own length, so it
-	 * bears on 10.75 x 10.25 of the brick below rather than on the full 21.5.
-	 *
-	 * It leans across the overhang direction, half-extent 5.375, which puts the
-	 * load path 5.375 cm off the patch centre — three times outside the middle
-	 * third, so part of the joint really does open.
+	 * Bed patch of a brick corbelled half its length: bears on 10.75 x 10.25. The load path is
+	 * 5.375 cm off the patch centre, outside the middle third, so part of the joint opens.
 	 */
 	constexpr double BedPatchBearingLengthCm = BrickLengthCm / 2.0;
 	constexpr double BedPatchAreaSqCm = BedPatchBearingLengthCm * BrickWidthCm;
@@ -158,20 +106,10 @@ namespace ConnectionStrengthTestSupport
 	}
 
 	/**
-	 * THE PRE-MOMENT MODEL, frozen — what ComputeUtilisation answered before
-	 * bending existed, transcribed from it and reading none of the moment fields.
-	 *
-	 * MIRRORING PRODUCTION IS THE POINT HERE, and it is the one place in this suite
-	 * where that is true. An oracle that re-derives today's algorithm proves
-	 * nothing, but this is a snapshot of YESTERDAY's answer, and the property under
-	 * test is literally identity with it: with no eccentricity the bending term
-	 * vanishes and a joint must read exactly, bit for bit, what it read before —
-	 * which is the only reason the existing suite and both fuzz generators can go
-	 * on supplying no geometry at all.
-	 *
-	 * The conversion factor is spelled out from first principles rather than
-	 * imported, so this fails if ForceUnitsPerMPaSqCm is wrong instead of agreeing
-	 * with it.
+	 * Frozen snapshot of ComputeUtilisation before bending existed; reads no moment fields.
+	 * Mirroring production is deliberate here: the property under test is bit-identity with the
+	 * old answer when there is no eccentricity. The conversion factor is spelled out so a wrong
+	 * ForceUnitsPerMPaSqCm fails here.
 	 */
 	double PreMomentUtilisation(
 		const FConnectionLoad& Load,
@@ -215,13 +153,7 @@ namespace ConnectionStrengthTestSupport
 	}
 }
 
-/**
- * Unit test for load-versus-strength utilisation.
- *
- * Pure arithmetic on already-classified loads: no world, no solver, no ticking,
- * so gravity is irrelevant by design. Per DESIGN.md the assertion is on the
- * mechanism — the utilisation ratio itself — never on anything moving.
- */
+/** Load-versus-strength utilisation on classified loads. Pure arithmetic; asserts on the ratio (DESIGN.md §4). */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthUtilisationTest,
 	"DestructionGame.Core.ConnectionStrength.Utilisation",
@@ -231,10 +163,7 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 {
 	using namespace ConnectionStrengthTestSupport;
 
-	/*
-	 * Read out of the shared profile here rather than at namespace scope, so the
-	 * reads happen at test time rather than during cross-TU static initialisation.
-	 */
+	// Read at test time, not during cross-TU static initialisation.
 	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
 	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
 	const double ConcreteTensileMPa = ConcreteUncoupled.TensileStrengthMPa;
@@ -267,7 +196,6 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 			TensionOf(ForceForMPa(ConcreteTensileMPa)), UnitAreaSqCm, 1.0
 		},
 
-		// Below the limit the joint holds; above it, it gives.
 		{
 			TEXT("compression at half its limit holds"),
 			CompressionOf(ForceForMPa(ConcreteCompressiveMPa / 2.0)), UnitAreaSqCm, 0.5
@@ -277,16 +205,9 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 			CompressionOf(ForceForMPa(ConcreteCompressiveMPa * 2.0)), UnitAreaSqCm, 2.0
 		},
 
-		/*
-		 * A joint fails on whichever axis gives first, so the worst governs.
-		 * Here compression is comfortable at 0.5 but shear is already at its limit.
-		 */
+		// Compression at 0.5, shear at its limit: the worst axis governs.
 		{
 			TEXT("the most utilised axis governs a combined load"),
-			/*
-			 * Captures by reference because the strengths are now read out of the
-			 * shared profile into locals rather than declared at namespace scope.
-			 */
 			[&]{
 				FConnectionLoad L;
 				L.Compression = ForceForMPa(ConcreteCompressiveMPa / 2.0);
@@ -296,11 +217,7 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 			UnitAreaSqCm, 1.0
 		},
 
-		/*
-		 * Strength is stress-based, not force-based: the same force through half
-		 * the area is twice the stress. A force-only model would miss this, and
-		 * thin joints would wrongly survive.
-		 */
+		// Stress-based, not force-based: the same force through half the area is twice the stress.
 		{
 			TEXT("halving the interface area doubles the utilisation"),
 			CompressionOf(ForceForMPa(ConcreteCompressiveMPa)), UnitAreaSqCm / 2.0, 2.0
@@ -323,12 +240,8 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 }
 
 /**
- * DESIGN.md's key validation of the directional model.
- *
- * The same force must be far more punishing in shear than in compression. If
- * these two numbers come out close, the directional logic is not really working
- * — something is collapsing the three strengths into one, which is precisely the
- * Chaos behaviour this system replaces.
+ * DESIGN.md's key check of the directional model: the same force is far more punishing in
+ * shear than in compression, by exactly the strength ratio.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthDirectionalAsymmetryTest,
@@ -342,7 +255,6 @@ bool FConnectionStrengthDirectionalAsymmetryTest::RunTest(const FString& Paramet
 	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
 	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
 
-	// One force magnitude, applied two different ways against the same joint.
 	const double Force = ForceForMPa(ConcreteShearMPa);
 
 	const double CompressionUtilisation =
@@ -350,7 +262,6 @@ bool FConnectionStrengthDirectionalAsymmetryTest::RunTest(const FString& Paramet
 	const double ShearUtilisation =
 		DestructionForce::ComputeUtilisation(ShearOf(Force), ConcreteUncoupled, UnitAreaSqCm);
 
-	// Shear is at its limit while compression has plenty of headroom left.
 	TestTrue(
 		FString::Printf(TEXT("shear should be at its limit, got %f"), ShearUtilisation),
 		FMath::IsNearlyEqual(ShearUtilisation, 1.0, 1e-9));
@@ -360,7 +271,6 @@ bool FConnectionStrengthDirectionalAsymmetryTest::RunTest(const FString& Paramet
 			CompressionUtilisation),
 		CompressionUtilisation < 0.5);
 
-	// The gap must match the strength ratio, not merely be present.
 	const double ExpectedRatio = ConcreteCompressiveMPa / ConcreteShearMPa;
 	const double ActualRatio = ShearUtilisation / FMath::Max(CompressionUtilisation, UE_DOUBLE_SMALL_NUMBER);
 
@@ -373,21 +283,9 @@ bool FConnectionStrengthDirectionalAsymmetryTest::RunTest(const FString& Paramet
 }
 
 /**
- * Mohr-Coulomb friction coupling: shear capacity grows with compression.
- *
- * The counterpart to the Utilisation test above. That one uses a deliberately
- * uncoupled profile (mu = 0) and proves the axes stay independent; this one uses
- * profiles with real friction and proves capacity responds to load.
- *
- *     shear capacity = cohesion + mu * compressive stress
- *
- * Why it matters: a masonry joint resists sliding partly because it is being
- * squeezed, so a wall sheds shear capacity as the weight above it is removed.
- * Without this, every joint holds a fixed strength no matter what is happening
- * around it, and dry stone — which has no bond at all — cannot stand up.
- *
- * Still pure arithmetic on classified loads. No world, no solver, gravity
- * irrelevant, assertions on the utilisation ratio itself.
+ * Mohr-Coulomb friction coupling: shear capacity = cohesion + mu * compressive stress. A wall
+ * loses shear capacity as the weight above is removed, and dry stone (no bond) stands only
+ * on friction. Pure arithmetic.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthFrictionCouplingTest,
@@ -409,7 +307,6 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 	};
 
 	const TArray<FCouplingCase> Cases = {
-		// Baseline: with nothing pressing on it, a mortar joint has only its bond.
 		{
 			TEXT("an uncompressed mortar joint gives at its bare cohesion"),
 			GeneralPurposeMortar,
@@ -418,13 +315,8 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The core behaviour, at the MEAN-BASIS mortar row (re-anchor 2026-08-13):
-		 * 1 MPa of compression buys mu = 0.75 MPa of extra shear capacity, taking
-		 * the joint from its bare 0.90 to 1.65 — so a shear stress of 1.65 that
-		 * would be ~1.8x over the bare bond now sits exactly at the limit. 1.65
-		 * stays below the 2.0 MPa mean-basis cap (the cap bites only from
-		 * (2.0 - 0.90) / 0.75 = 1.467 MPa of compression upward), so what is
-		 * measured here really is cohesion + friction, not the ceiling.
+		 * Mean-basis mortar: 1 MPa of compression adds mu = 0.75, so capacity goes 0.90 -> 1.65.
+		 * 1.65 is below the 2.0 cap (which bites from 1.467 MPa), so this measures friction.
 		 */
 		{
 			TEXT("compression raises mortar shear capacity by mu times the normal stress"),
@@ -438,11 +330,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			1.0
 		},
 
-		/*
-		 * Only compression helps. A joint being pulled open gains nothing, so an
-		 * implementation using the magnitude of normal stress — tension included —
-		 * would wrongly report this as holding.
-		 */
+		// Only compression helps; using |normal stress| would wrongly let tension add capacity.
 		{
 			TEXT("tension buys no friction benefit"),
 			GeneralPurposeMortar,
@@ -455,10 +343,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			1.0
 		},
 
-		/*
-		 * Dry stone is the pure case: zero cohesion, so capacity is entirely
-		 * friction. 1 MPa of compression yields 0.7 MPa of capacity.
-		 */
+		// Dry stone: zero cohesion, so 1 MPa of compression gives 0.7 MPa of capacity.
 		{
 			TEXT("dry stone holds only because it is compressed"),
 			DryStone,
@@ -471,11 +356,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			0.5 / 0.7
 		},
 
-		/*
-		 * Twice the compression, twice the capacity, half the utilisation. This is
-		 * the mechanism behind progressive collapse: strip the load above a joint
-		 * and its resistance to sliding falls away with it.
-		 */
+		// Twice the compression, half the utilisation.
 		{
 			TEXT("doubling the compression halves the dry stone utilisation"),
 			DryStone,
@@ -502,11 +383,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Utilisation, Case.ExpectedUtilisation, Tolerance));
 	}
 
-	/*
-	 * With no bond and nothing pressing on it, a dry stone joint has no shear
-	 * capacity whatsoever — any sliding load at all parts it. Asserted as "gives"
-	 * rather than a number because the ratio is unbounded here.
-	 */
+	// Unloaded dry stone has zero shear capacity; asserted as "gives" since the ratio is unbounded.
 	const double UnloadedDryStone =
 		DestructionForce::ComputeUtilisation(ShearOf(ForceForMPa(0.01)), DryStone, UnitAreaSqCm);
 
@@ -518,31 +395,12 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Friction stops helping past the material's own limit.
- *
- * Mohr-Coulomb envelopes are truncated in reality: squeeze a joint hard enough
- * and the material gives rather than the faces sliding. Left uncapped, capacity
- * climbs forever with depth, so joints at the base of a tall building become
- * effectively unbreakable in shear — backwards physically, and backwards for a
- * demolition game, where the base is exactly where cutting should work.
- *
- * MEAN-BASIS VALUES (re-anchor 2026-08-13). Mortar's ceiling is 2.0 MPa = 0.1 x
- * the 20 MPa unit — a mean-basis truncation, forced by measurement: the Newcastle
- * campaign (Gooch, Masia, Stewart & Lam 2023, ConBuildMat 386:131578) measures a
- * mean UNCONFINED shear bond of 1.81 MPa, above the old characteristic-basis
- * 0.065·f_b = 1.3 cap, so that cap cannot stand beside mean cohesion. Bare
- * cohesion is 0.90 (measured mean, same campaign: M4/M6 triplet means average
- * 1.117, regression intercepts 0.58-1.04) and mu is 0.75 (Gooch et al. 2025,
- * ConBuildMat 489:142348: initial friction 0.64-1.00, residual 0.60-1.11), so
- * the cap bites from (2.0 - 0.90) / 0.75 = 1.4667 MPa of compression upward.
- *
- * THE CEILING ITSELF IS READ FROM THE PROFILE rather than restated here, so a
- * retune moves the expectation with it. THE COMPRESSIONS ARE NOW DERIVED FROM
- * THE BITE POINT rather than sitting as literals (the old 3.0 / 4.0 sat 0.40 /
- * 0.50 MPa from the new bite point — the retune hazard CURRENT_STATE flagged):
- * both are bite + a margin, so they are past the cap by construction whatever
- * the profile says, and a fixture precondition pins that the compression axis
- * still does not govern at the deeper of the two.
+ * Friction stops helping past a shear ceiling. Uncapped, joints at the base of a tall
+ * building would become unbreakable in shear. Mortar's mean-basis ceiling is 2.0 MPa
+ * (0.1 x f_b; Gooch et al. 2023, ConBuildMat 386:131578, measured a 1.81 MPa unconfined
+ * mean), so with cohesion 0.90 and mu 0.75 the cap bites from 1.4667 MPa of compression.
+ * The ceiling is read from the profile and the test compressions derive from the bite
+ * point, so a retune moves them together.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthShearCapTest,
@@ -558,22 +416,12 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1e-9;
 
 	/*
-	 * THE CANONICAL RED OF THE MEAN-STRENGTH RE-ANCHOR (2026-08-13), together
-	 * with the pins in EdgeStressUnderAMoment below: these four fail until the
-	 * profile rows flip to the mean basis DESIGN §3 decided on 2026-08-08.
-	 *
-	 *  - cohesion 0.90 MPa: measured mean shear bond at zero normal stress,
-	 *    grade A — Gooch, Masia, Stewart & Lam 2023 (ConBuildMat 386:131578),
-	 *    M4/M6 unconfined triplet means averaging 1.117; Gooch et al. 2025
-	 *    (ConBuildMat 489:142348) regression intercepts 0.58-1.04. 0.90 is the
-	 *    centre of the regression range, just under the triplet average.
-	 *  - mu 0.75: measured initial friction 0.64-1.00 and residual 0.60-1.11
-	 *    (Normal, COV 0.14, 246 tests) — the old 0.6 sat at the low end of the
-	 *    measured means, not the centre.
-	 *  - cap 2.0 MPa = 0.1 x f_b: mean-basis truncation, forced by the measured
-	 *    unconfined mean of 1.81 MPa exceeding the characteristic-basis 1.3.
-	 *  - compressive 10.0: UNCHANGED — EN 998-2 / EN 1015-11 declare a MEAN
-	 *    compressive class, so the uplift must not be applied twice.
+	 * Pins for the mean-basis profile (DESIGN §3):
+	 *  - cohesion 0.90: centre of measured regression intercepts 0.58-1.04 (Gooch et al. 2025,
+	 *    ConBuildMat 489:142348).
+	 *  - mu 0.75: centre of measured initial friction 0.64-1.00.
+	 *  - cap 2.0 = 0.1 x f_b.
+	 *  - compressive 10.0: EN 998-2 already declares a mean class, so no uplift.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION (mean re-anchor): cohesion must be the measured mean 0.90 MPa, profile carries %g"),
@@ -595,13 +443,7 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 			GeneralPurposeMortar.CompressiveStrengthMPa),
 		GeneralPurposeMortar.CompressiveStrengthMPa == 10.0);
 
-	/*
-	 * THE BITE POINT, DERIVED FROM THE PROFILE — the compression at which
-	 * cohesion + mu * sigma reaches the ceiling. Every compression below is this
-	 * plus a margin, so the blocks measure the cap by construction rather than
-	 * relying on literals that a retune could strand on the wrong side of it
-	 * (the flagged CURRENT_STATE hazard, now closed).
-	 */
+	// Compression at which cohesion + mu * sigma reaches the ceiling.
 	const double BiteMPa =
 		(GeneralPurposeMortar.MaxShearStrengthMPa - GeneralPurposeMortar.ShearCohesionMPa)
 		/ GeneralPurposeMortar.FrictionCoefficient;
@@ -609,11 +451,7 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	const double ShallowerCompressionMPa = BiteMPa + 1.0;
 	const double DeeperCompressionMPa = BiteMPa + 2.0;
 
-	/*
-	 * At bite + 1 the joint would have cohesion + mu more capacity uncapped;
-	 * capped, capacity is the ceiling itself, so a shear stress of exactly the
-	 * ceiling sits at the limit rather than comfortably inside it.
-	 */
+	// Past the bite, capacity is the ceiling, so shear at the ceiling sits exactly at the limit.
 	{
 		FConnectionLoad Load;
 		Load.Compression = ForceForMPa(ShallowerCompressionMPa);
@@ -629,16 +467,8 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * Past the cap, extra compression buys nothing. Two different depths in a
-	 * wall must shear identically — that is what stops the base of a tall
-	 * structure becoming stronger without limit.
-	 *
-	 * Both compressions are past the bite point by construction, but must stay
-	 * well below mortar's own crushing limit: push the compression much higher
-	 * and the compression axis overtakes shear and governs the result, so the
-	 * assertion would be measuring crushing rather than the cap. Asserted as a
-	 * precondition on the DEEPER compression rather than trusted to arithmetic
-	 * in a comment.
+	 * Past the cap, extra compression buys nothing. The deeper compression must still be below
+	 * crushing, or the compression axis would govern instead of the cap.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: shear must govern at the deeper compression — compression axis %g must stay below shear axis %g"),
@@ -665,23 +495,14 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 				ShallowerUtilisation, DeeperUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, DeeperUtilisation, Tolerance));
 
-		/*
-		 * And it must be the capped value, not merely equal to each other — two
-		 * identically wrong numbers would satisfy the assertion above on its own.
-		 */
+		// Equality alone would pass two identically wrong numbers.
 		TestTrue(
 			FString::Printf(TEXT("capped shear utilisation should be 1.0/%f, expected %f, got %f"),
 				MortarMaxShearMPa, 1.0 / MortarMaxShearMPa, ShallowerUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, 1.0 / MortarMaxShearMPa, Tolerance));
 	}
 
-	/*
-	 * Below the cap nothing changes: friction still applies in full. Guards
-	 * against a fix that clamps everywhere rather than only at the ceiling. The
-	 * shear is DERIVED as the full uncapped capacity at 1 MPa of compression, so
-	 * this block stays on the friction side of the bite point whatever the
-	 * profile carries — the precondition asserts that rather than assuming it.
-	 */
+	// Below the cap friction applies in full; guards a clamp applied everywhere.
 	{
 		const double UncappedCapacityMPa =
 			GeneralPurposeMortar.ShearCohesionMPa + GeneralPurposeMortar.FrictionCoefficient * 1.0;
@@ -707,19 +528,9 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Degenerate inputs must never produce NaN, never produce infinity, and never
- * let a broken joint pass for an intact one.
- *
- * This is a property test, not an example test: it sweeps every combination of
- * interface area, load shape and material profile and asserts invariants that
- * must hold across all of them, rather than checking particular numbers. The
- * numbers are covered by Utilisation and FrictionCoupling above.
- *
- * The invariant that matters is the direction of failure. NaN compares false
- * against everything, so `Utilisation > 1.0` on a NaN reports the joint as
- * INTACT — and a structure quietly refusing to collapse is far harder to
- * diagnose than one that falls apart the instant something is uninitialised.
- * These assertions exist to keep that failure mode from coming back.
+ * Property test over area x load x profile: utilisation is never NaN or infinite, and a
+ * degenerate joint reads as failed. NaN compares false, so `Utilisation > 1.0` on a NaN would
+ * report the joint intact.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthDegenerateInputTest,
@@ -749,13 +560,7 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 			}()
 		},
 
-		/*
-		 * Garbage arriving from upstream. Chaos can produce a NaN velocity in a
-		 * pathological contact, which would reach here as a NaN force. Left
-		 * unguarded that poisons the result and the joint reports itself INTACT
-		 * during a physics blowup — the one moment it should certainly be giving.
-		 * An infinite load is the same story with a different value.
-		 */
+		// Chaos can produce NaN/infinite forces in a pathological contact; the joint must not read intact.
 		{
 			TEXT("a NaN load from upstream"),
 			[]{
@@ -774,11 +579,7 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 		},
 	};
 
-	/*
-	 * Dry stone is the important one here: real zeroes in two of its three
-	 * strengths, so it reaches the degenerate paths without anything being
-	 * misconfigured.
-	 */
+	// Dry stone has real zeroes in two strengths, so it reaches the degenerate paths legitimately.
 	const TArray<FNamedProfile> Profiles = {
 		{ TEXT("concrete (uncoupled)"), ConcreteUncoupled },
 		{ TEXT("mortar"), GeneralPurposeMortar },
@@ -818,11 +619,7 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 
 				if (!Area.bIsValidJoint || !bLoadIsWellFormed)
 				{
-					/*
-					 * Fail closed. A joint with no interface, or one handed a load
-					 * nobody can make sense of, must not report itself intact —
-					 * that is the single answer that must never come back.
-					 */
+					// Fail closed: no interface or a malformed load must not read intact.
 					TestTrue(
 						FString::Printf(TEXT("%s: a degenerate joint must read as failed, got %f"),
 							*Context, Utilisation),
@@ -836,37 +633,17 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A joint carrying an off-centre load reports the stress at its outermost fibre,
- * not the average across its face.
- *
- * THE AVERAGE IS THE WRONG NUMBER whenever the load path does not run through the
- * joint's centroid, and it is wrong in the direction that leaves things standing.
- * A brick hanging off a single head joint is the case actually visible in the
- * game: gravity runs parallel to that joint, so the mean normal stress is EXACTLY
- * zero, the only axis carrying anything is shear against mortar's cohesion, and
- * the joint reads a comfortable 0.0044 — over two hundred bricks from failure.
- * What is physically happening is that the brick's weight acts 10.75 cm from the
- * joint and levers the top of it open, and mortar's tensile strength is a
- * fourteenth of its compressive strength, so it is nearly thirteen times closer
- * to failing than that. (Mean-basis figures since the 2026-08-13 re-anchor; the
- * characteristic-basis ratios were 0.02, fifty bricks and twenty times.)
+ * An off-centre load reports the stress at the outermost fibre, not the face average. A brick
+ * hanging off one head joint has zero mean normal stress and reads 0.0044 in shear, but its
+ * weight acts 10.75 cm out and levers the joint open, about 13x closer to failure.
  *
  *     sigma_n = (Tension - Compression) / A        signed, positive in tension
  *     sigma_b = |M_u|/W_u + |M_v|/W_v              worst corner, biaxial
  *     peak tension     = max(0, sigma_n + sigma_b)
  *     peak compression = max(0, sigma_b - sigma_n)
  *
- * NO NEW CONVERSION BOUNDARY, and this is worth checking rather than assuming
- * because "moments" sounds like it should introduce one. Length is cm, so M is in
- * uu.cm and M/W with W in cm3 is uu/cm2 — the identical quantity a force over an
- * area already is. It divides by the same 10000 and nothing else. Every
- * expectation below is spelled from published strengths and brick dimensions
- * without touching a production constant, so a factor of 100 in the wrong place
- * shows up here rather than being absorbed.
- *
- * Pure arithmetic on classified loads: no world, no solver, no tick, gravity
- * irrelevant. The assertion is on the mechanism — the utilisation ratio — exactly
- * as DESIGN.md §4 asks of a unit test.
+ * No new conversion boundary: M/W is uu.cm / cm3 = uu/cm2, the same as force over area, so it
+ * divides by the same 10000. Expectations use published strengths only, so a 100x error shows.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthEdgeStressTest,
@@ -878,66 +655,33 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	using namespace ConnectionStrengthTestSupport;
 
 	/*
-	 * --- the expectations, and where every digit comes from --------------------
+	 * Brick weight = 2.72163125 kg * 980 = 2667.198625 uu.
 	 *
-	 * Brick 21.5 x 10.25 x 6.5 at 1.9 g/cm3 = 2.72163125 kg, so its weight is
-	 * 2.72163125 * 980 = 2667.198625 uu.
+	 * (b) One head joint: A = 66.625 cm2, W_u = (4/3) * 5.125 * 3.25^2 = 72.1770833 cm3,
+	 *     M_u = 2667.198625 * 10.75 = 28672.38521875 uu.cm.
+	 *       sigma_n = 0 (gravity is parallel to the joint)
+	 *       sigma_b = 397.250538 uu/cm2 = 0.0397250538 MPa
+	 *       tension = 0.0397250538 / 0.7 (mean f_x1) = 0.0567500769231
 	 *
-	 * (b) HELD BY ONE HEAD JOINT. A = 10.25 * 6.5 = 66.625 cm2 and
-	 *     W_u = (4/3) * 5.125 * 3.25^2 = 72.1770833... cm3. The weight acts
-	 *     10.75 cm away, so M_u = 2667.198625 * 10.75 = 28672.38521875 uu.cm.
-	 *
-	 *       sigma_n = 0                                  gravity is parallel to it
-	 *       sigma_b = 28672.38521875 / 72.1770833...      = 397.250538... uu/cm2
-	 *                                                     = 0.0397250538... MPa
-	 *       tension = 0.03972505.. / 0.7 (mean f_x1)      = 0.0567500769231
-	 *
-	 * (a) CORBELLED HALF ITS OWN LENGTH. Bearing 10.75 * 10.25 = 110.1875 cm2 and
-	 *     W = (4/3) * 5.125 * 5.375^2 = 197.4192708... cm3, load path 5.375 cm off
-	 *     centre, so M = 2667.198625 * 5.375 = 14336.192609375 uu.cm.
-	 *
-	 *       sigma_n = -2667.198625 / 110.1875 = -24.206 uu/cm2  (exactly)
-	 *       sigma_b =  14336.192609375 / 197.4192708... = 72.618 uu/cm2 (exactly)
-	 *       tension =  (72.618 - 24.206) / 10000 / 0.7  = 0.006916  (exactly)
-	 *
-	 *     It decomposes exactly, which is the check that the model is doing what it
-	 *     claims: sigma_b / |sigma_n| = 6e/t = 6 * 5.375 / 10.75 = 3 exactly, so
-	 *     the opened edge is 2x the mean, and tension is resisted by a strength
-	 *     14.3x smaller. 2 * 14.3 = the ~29x this row moves by, and a brick
-	 *     corbelled half its length still stands at 0.7% — which is correct.
-	 *
-	 * MEAN BASIS (re-anchor 2026-08-13): both tension figures divide by the mean
-	 * flexural bond 0.70 MPa where they used to divide by the characteristic 0.10
-	 * — a straight /7, because utilisation is linear in 1/strength per axis and
-	 * the stress side of both derivations is pure statics. The centred "today"
-	 * answers move too: the head joint's shear is bare cohesion (no compression
-	 * on a vertical joint), so it divides by 0.90 where it divided by 0.20.
+	 * (a) Corbelled half its length: A = 110.1875 cm2, W = 197.4192708 cm3,
+	 *     M = 2667.198625 * 5.375 = 14336.192609375 uu.cm.
+	 *       sigma_n = -24.206 uu/cm2, sigma_b = 72.618 uu/cm2 (sigma_b / |sigma_n| = 6e/t = 3)
+	 *       tension = (72.618 - 24.206) / 10000 / 0.7 = 0.006916
 	 */
 	constexpr double HangingBrickUtilisation = 0.0567500769231;
 	constexpr double CorbelledBrickUtilisation = 0.006916;
 
-	/* What the same two joints answer today, with the load path treated as centred. */
+	// The same two joints with the load path treated as centred.
 	constexpr double HangingBrickShearUtilisationToday = 0.0040033 / 0.9;
 	constexpr double CorbelledBrickCompressionUtilisationToday = 0.00024206;
 
 	/*
-	 * --- the fixture has to be capable of measuring what it claims to measure ---
-	 *
-	 * WHICH AXIS GOVERNS IS THE ENTIRE RISK, and here the governing axis is the
-	 * finding: ComputeUtilisation returns the WORST of the axes, so this test only
-	 * measures bending in tension while tension really is the worst. Worked
-	 * through for case (b), all three, against mean-basis mortar's 10 / 0.9 / 0.7:
+	 * ComputeUtilisation returns the worst axis, so this measures bending only while tension
+	 * governs. Case (b) against mortar's 10 / 0.9 / 0.7:
 	 *
 	 *   tension      0.0397250538 MPa / 0.7  = 0.0567501    <- governs
-	 *   shear        0.0040033    MPa / 0.9  = 0.0044481     (12.8x smaller)
-	 *   compression  0.0397250538 MPa / 10   = 0.0039725     (14.3x smaller)
-	 *
-	 * The compression edge grows by exactly as much as the tension edge does — the
-	 * joint pivots, so one side opens as the other closes — and still never gets
-	 * near governing, because the strength resisting it is 100x larger.
-	 *
-	 * Shear is untouched by any of this. Its capacity is bare cohesion, since the
-	 * mean COMPRESSIVE stress is what buys friction and here it is zero.
+	 *   shear        0.0040033    MPa / 0.9  = 0.0044481
+	 *   compression  0.0397250538 MPa / 10   = 0.0039725
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: bending must beat shear on the head joint, %g vs %g"),
@@ -955,19 +699,8 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 		CorbelledBrickUtilisation > 0.00096824);
 
 	/*
-	 * The expectations are ratios of published strengths, so they only mean what
-	 * they say while the profile still carries the figures they were derived
-	 * against. A retune must fail loudly here rather than quietly moving every
-	 * number above.
-	 *
-	 * MEAN BASIS (re-anchor 2026-08-13, DESIGN §3's 2026-08-08 decision): the
-	 * tension figure is the mean flexural bond f_x1 = 0.70 MPa — the centre of
-	 * two independent routes on the Newcastle campaign (Gooch, Masia, Stewart &
-	 * Lam 2023, ConBuildMat 386:131578): (a) twelve measured M4/M6 batch means
-	 * on extruded clay averaging 0.571, and (b) UK NA Table NA.6's
-	 * characteristic 0.4 x the campaign's own mean/characteristic ratio 1.89 =
-	 * 0.76. Cohesion is the measured mean 0.90 (same campaign; see ShearCap).
-	 * The other two pins decide which axis governs.
+	 * Pin the profile the expectations were derived against, so a retune fails here. f_x1 =
+	 * 0.70 MPa is the mean flexural bond (DESIGN §3; Gooch et al. 2023, ConBuildMat 386:131578).
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against mean f_x1 = 0.7 MPa, profile carries %g"),
@@ -1001,13 +734,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	};
 
 	const TArray<FEdgeStressCase> Cases = {
-		/*
-		 * THE ROW THAT CARRIES THE WHOLE POINT. A brick held by one head joint,
-		 * with the mean normal stress exactly zero. Centred, this reads 0.0044 in
-		 * shear and a chain of two hundred would be needed to part it; the fibre
-		 * at the top of the joint is at 0.0568 of the mean f_x1 and eighteen
-		 * brick weights part it.
-		 */
+		// Zero mean normal stress: centred reads 0.0044, the top fibre reads 0.0568.
 		{
 			TEXT("(b) a brick hanging off one head joint peels rather than shears"),
 			WithMomentU(ShearOf(BrickWeightUu), HeadJointMomentUuCm),
@@ -1015,11 +742,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 			HangingBrickUtilisation
 		},
 
-		/*
-		 * The two in-plane axes are symmetric — neither is privileged, and a joint
-		 * leaning the other way is the same joint. Guards an implementation that
-		 * wires up only the first modulus, which would read as a plausible zero.
-		 */
+		// The in-plane axes are symmetric; guards wiring up only the first modulus.
 		{
 			TEXT("(b) mirrored onto the other in-plane axis, same answer"),
 			WithMomentV(ShearOf(BrickWeightUu), HeadJointMomentUuCm),
@@ -1027,11 +750,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 			HangingBrickUtilisation
 		},
 
-		/*
-		 * Biaxial bending is the WORST CORNER, so the two contributions ADD. Half
-		 * the moment about each of two equal moduli must reach the same edge stress
-		 * as all of it about one — which max() or a root-sum-square would not.
-		 */
+		// Biaxial bending adds at the worst corner; max() or root-sum-square would not match.
 		{
 			TEXT("(b) split across both axes, the worst corner adds them"),
 			WithMomentV(
@@ -1041,11 +760,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 			HangingBrickUtilisation
 		},
 
-		/*
-		 * The sign of a moment says which edge opens, not how hard. Leaning the
-		 * other way is the same joint seen from the other side, so only the
-		 * magnitude reaches the stress.
-		 */
+		// The moment's sign picks which edge opens; only its magnitude reaches the stress.
 		{
 			TEXT("(b) leaning the opposite way is just as bad"),
 			WithMomentU(ShearOf(BrickWeightUu), -HeadJointMomentUuCm),
@@ -1053,10 +768,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 			HangingBrickUtilisation
 		},
 
-		/*
-		 * ZERO ECCENTRICITY IS NOT A SPECIAL CASE, it is e = 0. Take the moment
-		 * away from the row above and the joint reads exactly what it reads today.
-		 */
+		// With no moment the joint reads the centred answer.
 		{
 			TEXT("(b) with the load path centred, the head joint reads today's shear answer"),
 			ShearOf(BrickWeightUu),
@@ -1065,15 +777,9 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * (a) THE CORBEL, and the row where the mean normal stress is NOT zero — so
-		 * it is the one that pins the subtraction in max(0, sigma_n + sigma_b)
-		 * rather than just the bending term. Compression on the joint partly closes
-		 * what the lean opens: 72.618 - 24.206 rather than 72.618.
-		 *
-		 * ITS SECOND MODULUS IS DELIBERATELY LEFT AT ZERO. A brick leans one way
-		 * only, so there is no moment about the other axis and no section to resist
-		 * it — 0/0. That must contribute nothing rather than a NaN or a failed
-		 * joint, which is what forces the branch on the moment to come first.
+		 * The corbel has nonzero sigma_n, so it pins the subtraction in max(0, sigma_n + sigma_b):
+		 * 72.618 - 24.206. Its second modulus is zero with zero moment (0/0), which must
+		 * contribute nothing rather than NaN or a failed joint.
 		 */
 		{
 			TEXT("(a) a brick corbelled half its length is ~29x worse but still stands"),
@@ -1107,24 +813,9 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A joint with no eccentricity answers EXACTLY what it answered before moments
- * existed — bit for bit, not nearly.
- *
- * This is the claim the whole slice rests on. If sigma = N/A +/- M/W collapses to
- * N/A only approximately, then every fixture in this suite, both fuzz generators
- * and every recorded utilisation in CURRENT_STATE would have to be reworked to
- * carry geometry before anything could move. Because it collapses exactly, a
- * geometry-free fixture is not a special case being tolerated — it is a load path
- * that happens to run through the centroid, the same way FrictionCoefficient = 0
- * reduces Mohr-Coulomb exactly rather than approximately.
- *
- * EXACT EQUALITY IS THE ASSERTION, deliberately. A 1e-9 tolerance here would pass
- * for a rearrangement that moved every joint in the project by a few ulps, and
- * the cascade fuzz has five joints settling at utilisation exactly 1.0 and one at
- * 1 - 1 ulp, so a single ulp of drift is five spurious break-decision failures.
- *
- * GREEN ON ARRIVAL by construction — it pins behaviour that is already correct
- * and must survive. It is a regression net, not a driver.
+ * With no eccentricity a joint reads bit-for-bit what it read before moments existed, so
+ * geometry-free fixtures stay valid. Exact equality, not a tolerance: the cascade fuzz has
+ * joints settling at exactly 1.0, so one ulp of drift flips break decisions. Regression net.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthZeroMomentTest,
@@ -1144,7 +835,7 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 		{ TEXT("pure shear"), ShearOf(ForceForMPa(0.15)) },
 		{ TEXT("pure tension"), TensionOf(ForceForMPa(0.05)) },
 
-		// Friction coupling in the loop, since it reads the compressive stress too.
+		// Puts friction coupling in the loop.
 		{
 			TEXT("compression and shear together"),
 			[]{
@@ -1155,7 +846,7 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 			}()
 		},
 
-		// Past where the Mohr-Coulomb envelope is truncated, so the cap is in the loop.
+		// Puts the shear cap in the loop.
 		{
 			TEXT("compression past the shear cap"),
 			[]{
@@ -1166,7 +857,6 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 			}()
 		},
 
-		// A real brick's weight through a real bed joint, rather than round numbers.
 		{ TEXT("a brick's weight through a bed patch"), CompressionOf(BrickWeightUu) },
 	};
 
@@ -1196,12 +886,7 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 				const double Expected =
 					PreMomentUtilisation(Load.Load, Profile.Strength, Area.AreaSqCm);
 
-				/*
-				 * A section that knows its own geometry, but a load path running
-				 * straight through its centroid. The moduli are real and non-zero,
-				 * so this only passes if the bending term genuinely vanishes rather
-				 * than being skipped whenever geometry is absent.
-				 */
+				// Real non-zero moduli, centred load: the bending term must vanish, not be skipped.
 				const double WithGeometry = DestructionForce::ComputeUtilisation(
 					Load.Load, Profile.Strength,
 					FJointSection(Area.AreaSqCm, HeadJointModulusUCm3, HeadJointModulusVCm3));
@@ -1211,11 +896,7 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 						*Context, Expected, WithGeometry),
 					WithGeometry == Expected);
 
-				/*
-				 * And a caller that supplies nothing but an area — every fixture in
-				 * this suite and both fuzz generators — must reach the same answer
-				 * by the same route.
-				 */
+				// An area-only caller must reach the same answer.
 				const double WithoutGeometry =
 					DestructionForce::ComputeUtilisation(Load.Load, Profile.Strength, Area.AreaSqCm);
 
@@ -1231,21 +912,10 @@ bool FConnectionStrengthZeroMomentTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A moment with no section to resist it fails closed; no moment at all does not.
- *
- * Same reasoning as the existing area guard, and the same failure mode it exists
- * to prevent: M/W on a zero modulus is an infinity or a NaN, NaN compares false
- * against everything including `> 1.0`, and the joint would report itself INTACT
- * on an input nobody can interpret. A structure quietly refusing to collapse is
- * far harder to diagnose than one that falls apart the moment something is
- * uninitialised.
- *
- * BUT ZERO OVER ZERO MUST NEVER BE EVALUATED. A joint that leans about one axis
- * only has no moment about the other, and a section with no extent on that axis
- * has no modulus either — 0/0, on the ordinary path, for a joint that is
- * perfectly healthy. So the branch is on the MOMENT first: no moment, no bending
- * term, whatever the modulus is. Reversing those two tests turns every
- * single-axis lean into a failed joint.
+ * A moment with no section to resist it fails closed; no moment at all does not. M/W on a
+ * zero modulus is inf or NaN, and NaN would read intact. The branch tests the moment first:
+ * a single-axis lean has 0/0 on the other axis, and testing the modulus first would fail
+ * that healthy joint.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthDegenerateSectionTest,
@@ -1260,22 +930,17 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 
 	enum class EExpectation
 	{
-		/** Fails closed, the same sentinel the area guard returns. */
+		/** Fails closed with the area guard's sentinel. */
 		ExactlyMax,
 
-		/** Nothing loaded and nothing to resist: the honest answer is zero. */
 		ExactlyZero,
 
-		/** No bending term at all, so exactly what the joint read before moments. */
+		/** No bending term, so the pre-moment answer. */
 		PreMomentAnswer,
 
-		/** Garbage in: unusable but interpretable, so failed and finite. */
 		FailedButFinite,
 
-		/**
-		 * A real bending answer, so it must be loaded and it must be holding —
-		 * neither a zero from a skipped term nor the fail-closed sentinel.
-		 */
+		/** A real bending answer: loaded and holding, neither zero nor the sentinel. */
 		IntactUnderBendingAlone,
 	};
 
@@ -1307,11 +972,7 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 			EExpectation::ExactlyMax
 		},
 
-		/*
-		 * The one that matters most: a real load on the same joint. Without the
-		 * guard this returns a perfectly plausible 0.02 and nothing downstream can
-		 * tell that the geometry it was computed from was never filled in.
-		 */
+		// Without the guard this returns a plausible 0.02 from geometry never filled in.
 		{
 			TEXT("a moment with no modulus must not hide behind a plausible load"),
 			WithMomentU(ShearOf(BrickWeightUu), MomentUuCm),
@@ -1319,10 +980,7 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 			EExpectation::ExactlyMax
 		},
 
-		/*
-		 * And the counterpart, which is why the moment has to be tested first: a
-		 * section with no moduli at all is what every existing fixture supplies.
-		 */
+		// No moduli is what every existing fixture supplies.
 		{
 			TEXT("no moment and no moduli is an unloaded joint, not a failed one"),
 			FConnectionLoad(),
@@ -1335,12 +993,7 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 			FJointSection(HeadJointAreaSqCm, 0.0, 0.0),
 			EExpectation::PreMomentAnswer
 		},
-		/*
-		 * THE ROW THE BRANCH ORDER EXISTS FOR. A brick leans one way, so there is
-		 * a moment about u and none about v — and a section with no extent on v has
-		 * no modulus there either. Test the modulus before the moment and this
-		 * healthy joint evaluates 0/0 and fails closed.
-		 */
+		// Moment about u only, no modulus about v: testing the modulus first would fail this healthy joint.
 		{
 			TEXT("no moment about v excuses having no modulus about v"),
 			WithMomentU(FConnectionLoad(), MomentUuCm),
@@ -1348,11 +1001,7 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 			EExpectation::IntactUnderBendingAlone
 		},
 
-		/*
-		 * Garbage from upstream. Chaos can produce a NaN in a pathological contact,
-		 * and once a moment is derived from a position it is one more place for one
-		 * to arrive from.
-		 */
+		// Chaos can produce NaN in a pathological contact.
 		{
 			TEXT("a NaN moment"),
 			WithMomentU(FConnectionLoad(), MakeNaN()),
@@ -1366,7 +1015,7 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 			EExpectation::FailedButFinite
 		},
 
-		// The area guard still wins: a joint with no face is not a joint.
+		// The area guard still wins.
 		{
 			TEXT("a moment across no interface at all"),
 			WithMomentU(FConnectionLoad(), MomentUuCm),
@@ -1434,88 +1083,25 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 }
 
 /**
- * A DRY (no-tension) joint whose resultant sits OUTSIDE THE KERN but inside the
- * face does NOT fail: it opens partially and bears on the reduced contact, and
- * fails only when the resultant leaves the face (e >= h/2) or the peak
- * compression on the shrunken contact reaches f_c (crushing).
+ * A dry (no-tension) joint whose resultant is outside the kern but inside the face opens
+ * partially and bears on the reduced contact. It fails only when the resultant leaves the face
+ * (e >= h/2) or the contact stress reaches f_c. Without this, AxisUtilisation(peak tension,
+ * f_t = 0) returns Max the moment e > h/6, breaking the shed's DryStone lintel bearings.
  *
- * THE MECHANISM DRIVER FOR REVIEW ITEM 2. The as-built realistic brick shed
- * breaks five DryStone timber-lintel bearings the instant it settles, because
- * this is the router's above-cap break authority and it computes
+ * Bed depth h, width W: kern = h/6, edge = h/2. Past the kern the compressed zone is a
+ * triangle of length 3*(h/2 - e), so
  *
- *     PeakTensileStress = max(0, sigma_n + sigma_b)
+ *     sigma_max = 2*sigma_mean*h / (3*(h/2 - e))       equals the linear value at e = h/6
+ *     e_crush   = h * (1/2 - (2/3)*(sigma_mean/f_c))
  *
- * then hands that to AxisUtilisation(PeakTensileStress, f_t = 0), which returns
- * TNumericLimits<double>::Max() for ANY positive peak tension. Positive peak
- * tension appears the instant the resultant crosses the kern (e > h/6), so a dry
- * joint currently "fails" at the kern — physically wrong. A masonry (no-tension)
- * joint past the kern does not crack apart; the bed simply opens over part of its
- * length and carries the whole load on the compressed remainder.
+ * Fixture: h = 20, W = 10, sigma_mean = 3 MPa, DryStone f_c = 30, so e_crush = 8.6667.
  *
- * ------------------------------------------------------------------------------
- * THE GEOMETRY AND THE ARITHMETIC — every expected number derived here, not
- * imported, so a wrong production constant fails this test instead of agreeing.
+ *     e = 2.5   inside kern        5.25/30 = 0.175     stands
+ *     e = 5.0   cracked, stands    8.0/30 = 0.26667    stands (the linear model would say 0.25)
+ *     e = 9.0   cracked, crushes   40/30 = 1.33333     fails, finite
+ *     e = 10.5  off the face       >= 1                fails
  *
- * A rectangular bed, depth h in the bending direction, width W out of plane:
- *
- *     A  = W * h                       area
- *     S  = W * h^2 / 6 = A * h / 6     section modulus  ->  h = 6 * S / A
- *     kern = S / A = h / 6             the middle-third boundary
- *     edge = h / 2                     the face itself
- *
- * A normal (compression) resultant N applied at eccentricity e:
- *
- *     sigma_mean = N / A               (compression, so sigma_n = -sigma_mean)
- *     sigma_b    = N*e / S = sigma_mean * (6e/h)
- *     peak tension (linear) = max(0, sigma_n + sigma_b)
- *                           = sigma_mean * (6e/h - 1)   -> positive once e > h/6
- *
- * INSIDE THE KERN (e <= h/6) nothing opens: the face is wholly in compression and
- * the linear peak compression sigma_mean * (1 + 6e/h) is correct and finite.
- *
- * OUTSIDE THE KERN, INSIDE THE FACE (h/6 < e < h/2) the no-tension bed opens. The
- * compressed zone is a triangle of length L_c whose resultant must sit under the
- * load, so L_c = 3*(h/2 - e), and force balance (1/2)*sigma_max*W*L_c = N gives
- *
- *     sigma_max = 2N / (3*W*(h/2 - e)) = 2*sigma_mean*h / (3*(h/2 - e))
- *
- * which is STRICTLY LARGER than the linear reading it replaces (the contact
- * shrank), rises without bound as e -> h/2, and equals 2*sigma_mean at e = h/6
- * (matching the linear value there exactly, so the two regimes meet). Crushing is
- * sigma_max = f_c, i.e. the joint fails at
- *
- *     e_crush = h * (1/2 - (2/3)*(sigma_mean/f_c))
- *
- * OFF THE FACE (e >= h/2) there is no compressed contact that balances the load:
- * the joint fails outright.
- *
- * ------------------------------------------------------------------------------
- * THE FIXTURE. h = 20, W = 10  ->  A = 200 cm2, S = 666.6667 cm3, kern = 3.3333,
- * edge = 10. sigma_mean = 3 MPa against DryStone f_c = 30 MPa, so r = 0.1 and
- * e_crush = 20*(0.5 - 0.0667) = 8.6667 cm. The four swept eccentricities ladder
- * cleanly across the four regimes:
- *
- *     e = 2.5   (h/8, INSIDE kern)         util = sigma_mean*(1+6e/h)/f_c = 5.25/30 = 0.175    stands, finite
- *     e = 5.0   (h/4, cracked, STANDS)     util = 2*sigma_mean*h/(3*(h/2-e))/f_c = 8.0/30 = 0.26667 stands, finite
- *     e = 9.0   (0.45h, cracked, CRUSHES)  util = 40.0/30 = 1.33333                             fails by crushing, finite
- *     e = 10.5  (0.525h, OFF the face)     util >= 1                                            fails, resultant off face
- *
- * WHICH AXIS GOVERNS IS THE ENTIRE RISK. Under the correct model peak tension is
- * ZERO for every eccentric row (a dry bed carries no tension), shear is zero (a
- * pure normal load), so COMPRESSION is the only working axis and it governs by
- * construction. The reduced-contact compression 0.26667 is deliberately DIFFERENT
- * from the linear 0.25 the pre-fix code would compute if someone merely deleted
- * the spurious tension term: the shrunken contact concentrates the stress, so a
- * fix that keeps the full-width linear compression reads 0.25 and still fails this
- * row. That is the point — the reduced-contact formula is what is under test.
- *
- * RED TODAY: e = 5.0 reads Max() (positive peak tension against f_t = 0) where it
- * must read 0.26667 < 1; e = 9.0 reads Max() (not finite) where it must read a
- * FINITE 1.33333 by crushing. e = 2.5 (inside kern) and e = 10.5 (off face) are
- * green on arrival and pin the two boundaries the fix must not move.
- *
- * NEEDS A TICKING WORLD: NO. Pure arithmetic on a classified load; gravity is
- * irrelevant by design (DESIGN §4). The assertion is on the utilisation ratio.
+ * Tension and shear are zero on every row, so compression governs.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthDryEccentricContactTest,
@@ -1527,11 +1113,7 @@ bool FConnectionStrengthDryEccentricContactTest::RunTest(const FString& Paramete
 	using namespace ConnectionStrengthTestSupport;
 	using namespace DestructionProfiles;
 
-	/*
-	 * Conversion spelled from first principles, NOT imported: 1 N = 100 uu,
-	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2. If the
-	 * production constant is wrong this test fails rather than agreeing with it.
-	 */
+	// 10000 uu per MPa per cm2, spelled out so a wrong production constant fails here.
 	constexpr double UuPerMPaPerSqCm = 100.0 * 100.0;
 
 	constexpr double DepthHCm = 20.0;      // the bed depth in the bending direction
@@ -1545,8 +1127,6 @@ bool FConnectionStrengthDryEccentricContactTest::RunTest(const FString& Paramete
 	constexpr double EdgeCm = DepthHCm / 2.0;   // 10.0
 	const double CrushCm =
 		DepthHCm * (0.5 - (2.0 / 3.0) * (MeanCompMPa / DryStone.CompressiveStrengthMPa)); // 8.6667
-
-	/* ---- FIXTURE PRECONDITIONS ---------------------------------------------- */
 
 	TestTrue(TEXT("FIXTURE: DryStone is a true no-tension joint — f_t = 0 and cohesion = 0"),
 		DryStone.TensileStrengthMPa == 0.0 && DryStone.ShearCohesionMPa == 0.0);
@@ -1563,9 +1143,9 @@ bool FConnectionStrengthDryEccentricContactTest::RunTest(const FString& Paramete
 	enum class ERegime
 	{
 		InsideKernStands,   // finite, < 1, exact
-		CrackedStands,      // finite, < 1, exact  (RED today: reads Max)
-		CrackedCrushes,     // finite, >= 1, exact (RED today: reads Max, not finite)
-		OffFaceFails        // >= 1                (boundary pin, green today)
+		CrackedStands,      // finite, < 1, exact
+		CrackedCrushes,     // finite, >= 1, exact
+		OffFaceFails        // >= 1
 	};
 
 	struct FCase
@@ -1652,72 +1232,17 @@ bool FConnectionStrengthDryEccentricContactTest::RunTest(const FString& Paramete
 }
 
 /**
- * The BIAXIAL branch of the dry-joint reduced-contact rule, pinned directly.
+ * Biaxial branch of the dry-joint reduced-contact rule. The shed is only weakly biaxial, so
+ * it would not catch a dropped other-axis term. An axis is cracked when its own bending
+ * stress exceeds the mean compression (sigma_b_i > |sigma_n|):
+ *   - one axis cracked: PeakCompressive = sigma_c + sigma_b_other, compression governs.
+ *   - both cracked: a cut corner the 1-D formula does not cover, so fail closed (Max).
+ *   - neither alone cracked but sigma_bU + sigma_bV > |sigma_n|: also fail closed.
  *
- * A CHARACTERIZATION PIN, GREEN ON ARRIVAL. The sibling test above
- * (DryJointBearsOnReducedContactPastTheKern) only ever bends about U with the V
- * modulus zeroed, so it never exercises the three-way split the code makes once
- * BOTH axes carry a moment. The only production driver at scale — the 442-block
- * realistic shed — is weakly biaxial at its door lintel (M_v is ~4% of M_u), so
- * dropping the whole other-axis term would still pass the shed. This test is the
- * missing bite-prover: it holds the biaxial arithmetic in place so that the three
- * mutations below (drop the added other-axis bending; relieve instead of
- * fail-closed on both-cracked; relieve instead of fail-closed on the summed
- * corner) each turn exactly one row red.
- *
- * ------------------------------------------------------------------------------
- * THE MODEL, restated for two axes. For a dry joint (f_t = 0, cohesion = 0) in
- * net compression, an axis is CRACKED when its own bending stress alone exceeds
- * the mean compression, sigma_b_i > |sigma_n| (the per-axis e_i > h/6). Then:
- *
- *   - EXACTLY ONE axis cracked: the contact is the uniaxial triangular block
- *     about that axis, so the cracked axis gets the reduced-contact concentration
- *         sigma_c = 2*|sigma_n|*h / (3*(h/2 - e))            (h, e of the cracked axis)
- *     and the OTHER axis is still inside its own kern, an ordinary linear
- *     compression that ADDS to the worst corner:
- *         PeakCompressive = sigma_c + sigma_b_other        peak tension zeroed
- *     util = PeakCompressive / f_c, and COMPRESSION governs (tension = shear = 0).
- *
- *   - BOTH axes cracked: the contact is a cut corner, the 1-D formula does not
- *     apply, so the joint is left FAIL-CLOSED — its positive peak tension reads
- *     AxisUtilisation(+, f_t = 0) = TNumericLimits<double>::Max().
- *
- *   - NEITHER alone cracked BUT the summed corner opens (sigma_bU + sigma_bV >
- *     |sigma_n|): that corner tension is a two-dimensional state the 1-D formula
- *     likewise does not own, so again FAIL-CLOSED at Max().
- *
- * ------------------------------------------------------------------------------
- * THE FIXTURE. A rectangular bed 10 (out of the U-bending plane) by 20 (the
- * U depth), so A = 200 cm2, and the two moduli are the two rectangle moduli:
- *     S_U = W_v * h_U^2 / 6 = 10 * 20^2 / 6 = 666.6667 cm3   (h_U = 6 S_U/A = 20)
- *     S_V = h_U * W_v^2 / 6 = 20 * 10^2 / 6 = 333.3333 cm3   (h_V = 6 S_V/A = 10)
- * Mean compression |sigma_n| = 3 MPa against DryStone f_c = 30 (r = 0.1), so the
- * force is N = 3 * 10000 * 200 = 6e6 uu and each axis's bending stress is set by
- * a moment M_i = sigma_b_i * S_i * 10000 (conversion spelled from first
- * principles, not imported). e_i = M_i / N recovers the eccentricity.
- *
- * ROW 1 (one-cracked, non-trivial other axis) — PINS the `+ sigma_b_other` term:
- *     sigma_bU = 4.5 MPa  (> 3, cracked; e_U = 4.5*20/(6*3) = 5.0, in (h/6, h/2))
- *     sigma_bV = 1.5 MPa  (= 0.5|sigma_n|, WITHIN its kern; e_V = 1.5*10/18 = 0.83 < h_V/6 = 1.667)
- *     sigma_c  = 2*3*20 / (3*(10 - 5)) = 120/15 = 8.0 MPa
- *     PeakCompressive = 8.0 + 1.5 = 9.5      util = 9.5 / 30 = 0.3166667, COMPRESSION governs
- *   Drop the `+ sigma_b_other` and this reads 8.0/30 = 0.2666667 — the bite.
- *
- * ROW 2 (both cracked) — PINS the both-cracked fail-closed:
- *     sigma_bU = 4.5 MPa (cracked), sigma_bV = 4.5 MPa (> 3, cracked; e_V = 2.5 > 1.667)
- *     summed corner = 4.5 + 4.5 - 3 = 6 MPa tension survives  ->  util = Max()
- *
- * ROW 3 (neither alone cracks, summed corner in tension) — PINS that fail-closed:
- *     sigma_bU = 2.0 MPa (< 3), sigma_bV = 2.0 MPa (< 3), sum 4 > 3
- *     neither axis cracks, corner tension 4 - 3 = 1 MPa survives  ->  util = Max()
- *
- * WHICH AXIS GOVERNS IS THE ENTIRE RISK, and it is asserted explicitly: the
- * relieved row must be a FINITE compression reading below 1 (peak tension and
- * shear are both zero there, so nothing but compression can be governing), and
- * each fail-closed row must be EXACTLY the Max sentinel (only the tension axis
- * against f_t = 0 can produce it — the compression axis alone would be finite).
- *
- * NEEDS A TICKING WORLD: NO. Pure arithmetic on a classified load.
+ * Fixture: bed 10 x 20, A = 200, S_U = 666.6667, S_V = 333.3333, |sigma_n| = 3 MPa, f_c = 30.
+ *   Row 1: sigma_bU 4.5, sigma_bV 1.5 -> sigma_c = 8.0, util = 9.5/30 (8.0/30 if the V term drops).
+ *   Row 2: both 4.5 -> Max.
+ *   Row 3: both 2.0 (sum 4 > 3) -> Max.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthDryBiaxialContactTest,
@@ -1729,11 +1254,7 @@ bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters
 	using namespace ConnectionStrengthTestSupport;
 	using namespace DestructionProfiles;
 
-	/*
-	 * Conversion spelled from first principles, NOT imported: 1 N = 100 uu,
-	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2. A wrong
-	 * production constant fails this test rather than agreeing with it.
-	 */
+	// 10000 uu per MPa per cm2, spelled out so a wrong production constant fails here.
 	constexpr double UuPerMPaPerSqCm = 100.0 * 100.0;
 
 	constexpr double DepthHUCm = 20.0;   // U-bending depth
@@ -1746,8 +1267,6 @@ bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters
 	constexpr double MeanCompMPa = 3.0;
 	constexpr double CompressionForceUu = MeanCompMPa * UuPerMPaPerSqCm * AreaSqCm; // 6e6
 
-	/* ---- FIXTURE PRECONDITIONS ---------------------------------------------- */
-
 	TestTrue(TEXT("FIXTURE: DryStone is a true no-tension joint — f_t = 0 and cohesion = 0"),
 		DryStone.TensileStrengthMPa == 0.0 && DryStone.ShearCohesionMPa == 0.0);
 	TestTrue(TEXT("FIXTURE: derived against DryStone f_c = 30 MPa, profile carries it"),
@@ -1757,26 +1276,20 @@ bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("FIXTURE: the V section recovers h_V = 6 S_V / A = 10 cm"),
 		FMath::IsNearlyEqual(DepthHVCm, 10.0, 1e-9));
 
-	/*
-	 * The moment that loads modulus S to a target bending stress, uu.cm. Independent
-	 * of production: sigma_b = |M| / (S * conv)  ->  M = sigma_b * S * conv.
-	 */
+	// Moment (uu.cm) that loads modulus S to a target bending stress: M = sigma_b * S * conv.
 	auto MomentForBendingStress = [&](double BendingStressMPa, double ModulusCm3)
 	{
 		return BendingStressMPa * ModulusCm3 * UuPerMPaPerSqCm;
 	};
 
-	/*
-	 * The reduced-contact concentration on a cracked axis, MPa, derived here:
-	 * sigma_c = 2*|sigma_n|*h / (3*(h/2 - e)), with e = sigma_b * h / (6*|sigma_n|).
-	 */
+	// Reduced-contact stress on a cracked axis, MPa: 2*|sigma_n|*h / (3*(h/2 - e)), e = sigma_b*h / (6*|sigma_n|).
 	auto ReducedContactStress = [&](double CrackedBendingMPa, double DepthCm)
 	{
 		const double Ecc = CrackedBendingMPa * DepthCm / (6.0 * MeanCompMPa);
 		return 2.0 * MeanCompMPa * DepthCm / (3.0 * (0.5 * DepthCm - Ecc));
 	};
 
-	/* Row 1 oracle: reduced contact on U (sigma_bU = 4.5) plus within-kern V (1.5). */
+	// Row 1 oracle: reduced contact on U (sigma_bU = 4.5) plus within-kern V (1.5).
 	const double Row1Sigma_c = ReducedContactStress(4.5, DepthHUCm);          // 8.0
 	const double Row1Util = (Row1Sigma_c + 1.5) / DryStone.CompressiveStrengthMPa; // 9.5/30
 
@@ -1829,11 +1342,7 @@ bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters
 		switch (Case.Regime)
 		{
 		case ERegime::OneCrackedRelieves:
-			/*
-			 * COMPRESSION MUST GOVERN. Peak tension and shear are both zero on a
-			 * relieved dry bed under a pure normal load, so a finite reading below
-			 * Max can only be the compression axis — asserted, then pinned to value.
-			 */
+			// Tension and shear are zero here, so a finite reading can only be compression.
 			TestTrue(
 				FString::Printf(TEXT("%s: must be a real compression reading, not the failure sentinel (Max), got %g"),
 					Case.Description, Utilisation),
@@ -1849,12 +1358,7 @@ bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters
 			break;
 
 		case ERegime::FailsClosed:
-			/*
-			 * THE TENSION AXIS MUST GOVERN. Only AxisUtilisation(+, f_t = 0) yields
-			 * the Max sentinel exactly; the compression axis alone would be finite,
-			 * so equality with Max pins that the surviving corner tension is what
-			 * fails the joint rather than any relieved compression reading.
-			 */
+			// Only the tension axis against f_t = 0 yields exactly Max; compression would be finite.
 			TestEqual(
 				FString::Printf(TEXT("%s: must fail closed at exactly the Max sentinel, got %g"),
 					Case.Description, Utilisation),
